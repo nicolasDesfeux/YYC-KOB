@@ -11,18 +11,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 
-import javax.validation.Valid;
 @javax.annotation.Generated(value = "io.swagger.codegen.languages.SpringCodegen", date = "2020-01-02T22:35:02.857Z")
 
-@Api(value = "ranking", description = "the ranking API")
-public interface RankingApi {
+@Api(value = "findResultByPlayerAndGame", description = "the findResultByPlayerAndGame API")
+public interface FindResultByPlayerAndGameApi {
 
-    @ApiOperation(value = "Returns the ranking (current or at specific game)", nickname = "getRanking", notes = "", response = String.class, tags = {"Ranking",})
+    @ApiOperation(value = "Find results for game and/or player", nickname = "findResultByPlayerAndGame", notes = "", response = String.class, tags = {"Results",})
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "successful operation", response = String.class)})
-    @RequestMapping(value = "/ranking",
+    @RequestMapping(value = "/findResultByPlayerAndGame",
             produces = {"text/plain"},
+            consumes = {"application/x-www-form-urlencoded"},
             method = RequestMethod.GET)
-    ResponseEntity<String> getRanking(@ApiParam(value = "Game at which the ranking needs to be generated. Leave empty for most current Ranking") @Valid @RequestParam(value = "gameId", required = false) Long gameId);
+    ResponseEntity<String> findResultByPlayerAndGame(@ApiParam(value = "Game for the result") @RequestParam(value = "gameId", required = false) String gameId, @ApiParam(value = "Player that participate in the game") @RequestParam(value = "playerId", required = false) String playerId);
 
 }

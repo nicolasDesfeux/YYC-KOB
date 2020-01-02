@@ -35,7 +35,7 @@ public class KOB {
     // Objects to access data.
     private GameDao gameDao;
 
-
+    private static KOB single_instance = null;
     /**
      * Starts the system, and sets up data access. It also initializes the data if need be.
      */
@@ -50,6 +50,14 @@ public class KOB {
         }
     }
 
+    // static method to create instance of Singleton class
+    public static KOB getInstance() {
+        if (single_instance == null)
+            single_instance = new KOB();
+
+        return single_instance;
+    }
+
     public static void main(String[] args) {
         try {
             System.out.println("Press a key to get started");
@@ -57,7 +65,7 @@ public class KOB {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        KOB kob = new KOB();
+        KOB kob = getInstance();
 
         // Show some behaviours
         // Print the current ranking based on player scores.
@@ -220,6 +228,15 @@ public class KOB {
      */
     public String getPrintableRanking() {
         return "Current Ranking: \n" + getPrintableRankingAtGame(gameDao.getLastCompletedGame());
+    }
+
+    public String getPrintableRanking(Long gameId) {
+        if (gameId == null) {
+            return "Current Ranking: \n" + getPrintableRanking();
+        } else {
+            return getPrintableRankingAtGame(gameDao.getGame(gameId));
+        }
+
     }
 
     public String getPrintableRankingAtGame(Game game) {

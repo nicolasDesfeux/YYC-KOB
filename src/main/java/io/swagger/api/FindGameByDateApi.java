@@ -12,17 +12,19 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+
 @javax.annotation.Generated(value = "io.swagger.codegen.languages.SpringCodegen", date = "2020-01-02T22:35:02.857Z")
 
-@Api(value = "ranking", description = "the ranking API")
-public interface RankingApi {
+@Api(value = "findGameByDate", description = "the findGameByDate API")
+public interface FindGameByDateApi {
 
-    @ApiOperation(value = "Returns the ranking (current or at specific game)", nickname = "getRanking", notes = "", response = String.class, tags = {"Ranking",})
+    @ApiOperation(value = "Find game that have been played on the specified dates", nickname = "findGamesByDate", notes = "", response = String.class, tags = {"Games",})
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "successful operation", response = String.class)})
-    @RequestMapping(value = "/ranking",
+    @RequestMapping(value = "/findGameByDate",
             produces = {"text/plain"},
             method = RequestMethod.GET)
-    ResponseEntity<String> getRanking(@ApiParam(value = "Game at which the ranking needs to be generated. Leave empty for most current Ranking") @Valid @RequestParam(value = "gameId", required = false) Long gameId);
+    ResponseEntity<String> findGamesByDate(@NotNull @ApiParam(value = "Date of the game (format: YYYY-MM-DD)", required = true) @Valid @RequestParam(value = "gameDate", required = true) Long gameDate);
 
 }
