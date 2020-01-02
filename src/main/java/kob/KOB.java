@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.sql.Date;
 import java.sql.*;
 import java.text.DecimalFormat;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,7 +30,8 @@ public class KOB {
     private PlayerDao playerDao;
     public final static DecimalFormat DF = new DecimalFormat("0.0");
     private final static int RECENT_GAMES = 15;
-    public final static boolean LIMIT_TO_A_YEAR = false;
+    // TODO this is a bit annoying, because now everytime we had a game, we need to get ride of older games, and recalculate everything...
+    public final static boolean LIMIT_TO_A_YEAR = true;
     // Objects to access data.
     private GameDao gameDao;
 
@@ -240,6 +242,7 @@ public class KOB {
         for (Player player : ranking) {
             setPlayerMasterScoreAtGame(game, player);
         }
+        System.out.println(ranking.stream().filter(player -> !player.isHasResults()).collect(Collectors.toList()));
         ranking = ranking.stream().filter(Player::isHasResults).sorted(Player::compare).collect(Collectors.toList());
         Collections.reverse(ranking);
         return ranking;
@@ -247,6 +250,9 @@ public class KOB {
 
     private double getPlayerResultAverageAtGame(Game game, Player player) {
         List<Result> allResultsFromPlayer = resultDao.getAllResultsFromPlayer(player);
+        if (KOB.LIMIT_TO_A_YEAR) {
+            allResultsFromPlayer = allResultsFromPlayer.stream().filter(result -> result.getDateForLight().after(new Date(Date.valueOf(LocalDate.now()).getTime() - 31556952000L))).collect(Collectors.toList());
+        }
         allResultsFromPlayer.add(new Result(-1, 0, INITIAL_SCORE, new Date(0), 0));
         return allResultsFromPlayer.stream().filter(result -> result.getDateForLight().before(game.getDate())).mapToDouble(Result::getScore).average().getAsDouble();
     }
@@ -260,6 +266,10 @@ public class KOB {
             cutOffDate = cutOffgame.getDate();
         }
         List<Result> allPlayerResults = resultDao.getAllResultsFromPlayer(player);
+        if (KOB.LIMIT_TO_A_YEAR) {
+            allPlayerResults = allPlayerResults.stream().filter(result -> result.getDateForLight().after(new Date(Date.valueOf(LocalDate.now()).getTime() - 31556952000L))).collect(Collectors.toList());
+        }
+        System.out.println(allPlayerResults);
         Date finalCutOffDate = cutOffDate;
         List<Result> resultsBeforeCutOffDate = allPlayerResults.stream().filter(it -> (it.getDateForLight().before(finalCutOffDate) || it.getDateForLight().equals(finalCutOffDate)) && (it.getDateForLight().equals(asOfDate) || it.getDateForLight().before(asOfDate))).collect(Collectors.toList());
         List<Result> resultsAfterCutOffDate = allPlayerResults.stream().filter(it -> it.getDateForLight().after(finalCutOffDate) && (it.getDateForLight().equals(asOfDate) || it.getDateForLight().before(asOfDate))).collect(Collectors.toList());

@@ -2,7 +2,6 @@ package daoJdbc;
 
 import daoInterface.GameDao;
 import dto.Game;
-import kob.KOB;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -31,9 +30,6 @@ public class GameDaoJDBC implements GameDao {
         try {
             Statement stmt = connection.createStatement();
             String sql = "SELECT * FROM game order by sessionDate asc";
-            if(KOB.LIMIT_TO_A_YEAR){
-                sql="SELECT * FROM game where game.sessionDate >= DATE_SUB(NOW(),INTERVAL 1 YEAR) order by sessionDate asc;";
-            }
             ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 results.add(extractGameFromResultSet(rs));
@@ -51,9 +47,6 @@ public class GameDaoJDBC implements GameDao {
         try {
             Statement stmt = connection.createStatement();
             String sql = "SELECT * FROM game where not(isComplete) order by sessionDate asc";
-            if(KOB.LIMIT_TO_A_YEAR){
-                sql="SELECT * FROM game where not(isComplete) and game.sessionDate >= DATE_SUB(NOW(),INTERVAL 1 YEAR) order by sessionDate asc;";
-            }
             ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 results.add(extractGameFromResultSet(rs));
@@ -71,9 +64,6 @@ public class GameDaoJDBC implements GameDao {
         try {
             Statement stmt = connection.createStatement();
             String sql = "SELECT * FROM game where isComplete order by sessionDate asc";
-            if(KOB.LIMIT_TO_A_YEAR){
-                sql="SELECT * FROM game where isComplete and game.sessionDate >= DATE_SUB(NOW(),INTERVAL 1 YEAR) order by sessionDate asc;";
-            }
             ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 results.add(extractGameFromResultSet(rs));

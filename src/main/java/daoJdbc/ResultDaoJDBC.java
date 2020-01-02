@@ -6,7 +6,6 @@ import daoInterface.ResultDao;
 import dto.Game;
 import dto.Player;
 import dto.Result;
-import kob.KOB;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -134,7 +133,8 @@ public class ResultDaoJDBC implements ResultDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             Statement stmt = connection.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM result where sessionId=" + game.getId() + " ORDER BY result");
+            String sql = "SELECT * FROM result where sessionId=" + game.getId();
+            ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 results.add(extractResultFromResultSet(rs));
             }
@@ -150,7 +150,8 @@ public class ResultDaoJDBC implements ResultDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             Statement stmt = connection.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM result where sessionId=" + game.getId() + " ORDER BY playerMasterScoreBeforeGame desc");
+            String sql = "SELECT * FROM result where sessionId=" + game.getId() + " ORDER BY playerMasterScoreBeforeGame desc";
+            ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 results.add(extractResultFromResultSet(rs));
             }
@@ -167,9 +168,6 @@ public class ResultDaoJDBC implements ResultDao {
         try {
             Statement stmt = connection.createStatement();
             String sql = "SELECT * FROM result left join game on game.id=result.sessionId where playerId=" + p.getId();
-            if(KOB.LIMIT_TO_A_YEAR){
-                sql+=" and game.sessionDate >= DATE_SUB(NOW(),INTERVAL 1 YEAR);";
-            }
             sql += " order by game.sessionDate desc";
             ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
