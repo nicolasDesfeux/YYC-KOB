@@ -67,16 +67,46 @@ public class ResultDaoJDBC implements ResultDao {
     public boolean updateResult(Result result) {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
-            PreparedStatement ps = connection.prepareStatement("UPDATE result SET playerId=?, sessionId=?, result=?, score=? WHERE id=?");
+            PreparedStatement ps = connection.prepareStatement("UPDATE result SET playerId=?, sessionId=?, result=?, score=?, playerMasterScoreBeforeGame=? WHERE id=?");
             ps.setLong(1, result.getPlayer().getId());
             ps.setLong(2, result.getSession().getId());
             ps.setLong(3, result.getResult());
             ps.setDouble(4, result.getScore());
-            ps.setLong(5, result.getId());
+            ps.setDouble(5, result.getPlayerMasterScoreBeforeGame());
+            ps.setLong(6, result.getId());
             int i = ps.executeUpdate();
-            if(i == 1) {
+            if (i == 1) {
                 return true;
             }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return false;
+    }
+
+    @Override
+    public boolean updateResults(List<Result> results) {
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            PreparedStatement ps = connection.prepareStatement("UPDATE result SET playerId=?, sessionId=?, result=?, score=?, playerMasterScoreBeforeGame=? WHERE id=?");
+            for (Result result : results) {
+                ps.setLong(1, result.getPlayer().getId());
+                ps.setLong(2, result.getSession().getId());
+                ps.setLong(3, result.getResult());
+                ps.setDouble(4, result.getScore());
+                ps.setDouble(5, result.getPlayerMasterScoreBeforeGame());
+                ps.setLong(6, result.getId());
+                ps.addBatch();
+                ps.clearParameters();
+            }
+
+            int[] stmtReturn = ps.executeBatch();
+            for (int i : stmtReturn) {
+                if (i != 1)
+                    return false;
+            }
+            return true;
+
         } catch (SQLException ex) {
             ex.printStackTrace();
         }
@@ -104,7 +134,23 @@ public class ResultDaoJDBC implements ResultDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             Statement stmt = connection.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM result where isComplete and sessionId="+game.getId()+" ORDER BY result");
+            ResultSet rs = stmt.executeQuery("SELECT * FROM result where sessionId=" + game.getId() + " ORDER BY result");
+            while (rs.next()) {
+                results.add(extractResultFromResultSet(rs));
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return results;
+    }
+
+    @Override
+    public List<Result> getAllResultsFromGameOrderByOriginalMasterScore(Game game) {
+        List<Result> results = new ArrayList<>();
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT * FROM result where sessionId=" + game.getId() + " ORDER BY playerMasterScoreBeforeGame desc");
             while (rs.next()) {
                 results.add(extractResultFromResultSet(rs));
             }
@@ -120,10 +166,11 @@ public class ResultDaoJDBC implements ResultDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             Statement stmt = connection.createStatement();
-            String sql = "SELECT * FROM result left join game on game.id=result.sessionId where isComplete and playerId=" + p.getId();
+            String sql = "SELECT * FROM result left join game on game.id=result.sessionId where playerId=" + p.getId();
             if(KOB.LIMIT_TO_A_YEAR){
                 sql+=" and game.sessionDate >= DATE_SUB(NOW(),INTERVAL 1 YEAR);";
             }
+            sql += " order by game.sessionDate desc";
             ResultSet rs = stmt.executeQuery(sql);
             while (rs.next()) {
                 Result res = extractResultLightFromResultSet(rs);
@@ -140,10 +187,10 @@ public class ResultDaoJDBC implements ResultDao {
     private Result extractResultFromResultSet(ResultSet rs) throws SQLException {
         PlayerDao player = new PlayerDaoJDBC();
         GameDao game = new GameDaoJDBC();
-        return new Result(rs.getLong("id"), game.getGame(rs.getLong("sessionId")), player.getPlayer(rs.getLong("playerId")), rs.getLong("result"), rs.getDouble("score"));
+        return new Result(rs.getLong("id"), game.getGame(rs.getLong("sessionId")), player.getPlayer(rs.getLong("playerId")), rs.getLong("result"), rs.getDouble("score"), rs.getDouble("playerMasterScoreBeforeGame"));
     }
 
     private Result extractResultLightFromResultSet(ResultSet rs) throws SQLException {
-        return new Result(rs.getLong("id"), rs.getLong("result"), rs.getDouble("score"), rs.getDate("sessionDate"));
+        return new Result(rs.getLong("id"), rs.getLong("result"), rs.getDouble("score"), rs.getDate("sessionDate"), rs.getDouble("playerMasterScoreBeforeGame"));
     }
 }

@@ -126,13 +126,28 @@ public class GameDaoJDBC implements GameDao {
         try {
             Statement stmt = connection.createStatement();
             int i = stmt.executeUpdate("DELETE FROM game WHERE id=" + game.getId());
-            if(i == 1) {
+            if (i == 1) {
                 return true;
             }
         } catch (SQLException ex) {
             ex.printStackTrace();
         }
         return false;
+    }
+
+    @Override
+    public Game getLastCompletedGame() {
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            Statement stmt = connection.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT * FROM game order by sessionDate desc limit 1");
+            if (rs.next()) {
+                return extractGameFromResultSet(rs);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return null;
     }
 
 

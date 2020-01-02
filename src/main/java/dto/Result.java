@@ -1,5 +1,7 @@
 package dto;
 
+import kob.KOB;
+
 import java.sql.Date;
 
 public class Result {
@@ -9,20 +11,23 @@ public class Result {
     private long result;
     private double score;
     private Date dateForLight;
+    private double playerMasterScoreBeforeGame;
 
-    public Result(long id, Game session, Player player, long result, double score) {
+    public Result(long id, Game session, Player player, long result, double score, double playerMasterScoreBeforeGame) {
         this.id = id;
         this.session = session;
         this.player = player;
         this.result = result;
         this.score = score;
+        this.playerMasterScoreBeforeGame = playerMasterScoreBeforeGame;
     }
 
-    public Result(long id, long result, double score, Date date) {
+    public Result(long id, long result, double score, Date date, double playerMasterScoreBeforeGame) {
         this.id = id;
         this.result = result;
         this.score = score;
         this.dateForLight = date;
+        this.playerMasterScoreBeforeGame = playerMasterScoreBeforeGame;
     }
 
     public Result(Game session, Player player, long result) {
@@ -84,14 +89,25 @@ public class Result {
         this.dateForLight = dateForLight;
     }
 
+    public static int compare(Result result, Result result1) {
+        return Double.compare(result1.playerMasterScoreBeforeGame, result.playerMasterScoreBeforeGame);
+    }
+
+    public double getPlayerMasterScoreBeforeGame() {
+        return playerMasterScoreBeforeGame;
+    }
+
+    public void setPlayerMasterScoreBeforeGame(double playerMasterScoreBeforeGame) {
+        this.playerMasterScoreBeforeGame = playerMasterScoreBeforeGame;
+    }
+
     @Override
     public String toString() {
         return "Result{" +
-                "id=" + id +
-                ", On " + (session!=null?session.getDate():dateForLight)+
-                ", player " + player.getName() +
-                " finshed " + result +
-                ", scoring " + score +
-                " points}\n";
+                "On " + (session != null ? session.getDate() : dateForLight) +
+                ", " + player.getName() +
+                " finished " + result +
+                ", scoring " + KOB.DF.format(score) +
+                " points (Original master score: " + KOB.DF.format(playerMasterScoreBeforeGame) + ")}";
     }
 }

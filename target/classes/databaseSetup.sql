@@ -13,7 +13,6 @@ CREATE TABLE Properties (
 CREATE TABLE Player (
     id int NOT NULL AUTO_INCREMENT,
     Name varchar(255) NOT NULL,
-    MasterScore DOUBLE,
     hasScore BOOLEAN not null default 0,
     PRIMARY KEY (id)
 );
@@ -32,6 +31,7 @@ CREATE TABLE Result (
     playerID int NOT NULL,
     sessionID int NOT NULL,
     Result int,
+    playerMasterScoreBeforeGame DOUBLE,
     Score DOUBLE,
     PRIMARY KEY (id),
     FOREIGN KEY (playerID) REFERENCES Player(id),
@@ -40,82 +40,81 @@ CREATE TABLE Result (
 
 INSERT INTO Properties (Name,Value) VALUES ('kob.initializationCompleted','false');
 
-INSERT INTO Player (Name,MasterScore) VALUES ('Aadam Nanji',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Aaron Feldman',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Alex Bader',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Alex Bellmorato',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Anthony Szkultecki',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Austin Zabel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Bas Surewaard',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Ben Driscoll',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Ben Hopman',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Ben Shaver',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Brandon Hewwing',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Brock Pavier',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Chris Cheng',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Cole Florence',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Colton De Man',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Dan Padva',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Dave Lyon',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Dominic Paiement',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Donovan Richards',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Ed Djonlich',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Elliot Weinstein',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Eric Bossaer',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Evan Zabel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Filipe Biondi',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Gabriel Padva',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Gavin Little',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jack Pavier',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jarett Noel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jarron Mueller',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jason Felter',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jason Hofer',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jeff Lee',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Joel Zindel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jon Cahill',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jon Isaacs',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Jordan Wenaas',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Josh Woelfel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Joshua Smith',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('JP Julien',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Kevin Lee',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Kevin Wenzel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Kirill Dubrovskiy',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Leanne Padva',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Lukas Mager',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Mark Anderson',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Mark Tierney',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Martin McKaughan',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Matt Tierney',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Matty Jose',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Mike Clark',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Mike Funk',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Mike Spracklin',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Nicolas Desfeux',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Paul Bauerle',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Peter Czepuryk',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Phil Woelfel',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Pieter Boekhoff',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Rob Driscoll',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Rob Toth',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Sam Scott',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Sarain Soonias',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Scott Lahey',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Sean Martin',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Sean Peister',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Shawn Shoemaker',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Simon Hart',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Stefan Bellmont',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Taylor Arnett',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Tom Haight',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Tony Nguyen',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Ty Fraser',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Tyler Latuila',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Wayne Sopko',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Yarek Bartosz',50);
-INSERT INTO Player (Name,MasterScore) VALUES ('Zach Adams',50);
-
+INSERT INTO Player (Name) VALUES ('Aadam Nanji');
+INSERT INTO Player (Name) VALUES ('Aaron Feldman');
+INSERT INTO Player (Name) VALUES ('Alex Bader');
+INSERT INTO Player (Name) VALUES ('Alex Bellmorato');
+INSERT INTO Player (Name) VALUES ('Anthony Szkultecki');
+INSERT INTO Player (Name) VALUES ('Austin Zabel');
+INSERT INTO Player (Name) VALUES ('Bas Surewaard');
+INSERT INTO Player (Name) VALUES ('Ben Driscoll');
+INSERT INTO Player (Name) VALUES ('Ben Hopman');
+INSERT INTO Player (Name) VALUES ('Ben Shaver');
+INSERT INTO Player (Name) VALUES ('Brandon Hewwing');
+INSERT INTO Player (Name) VALUES ('Brock Pavier');
+INSERT INTO Player (Name) VALUES ('Chris Cheng');
+INSERT INTO Player (Name) VALUES ('Cole Florence');
+INSERT INTO Player (Name) VALUES ('Colton De Man');
+INSERT INTO Player (Name) VALUES ('Dan Padva');
+INSERT INTO Player (Name) VALUES ('Dave Lyon');
+INSERT INTO Player (Name) VALUES ('Dominic Paiement');
+INSERT INTO Player (Name) VALUES ('Donovan Richards');
+INSERT INTO Player (Name) VALUES ('Ed Djonlich');
+INSERT INTO Player (Name) VALUES ('Elliot Weinstein');
+INSERT INTO Player (Name) VALUES ('Eric Bossaer');
+INSERT INTO Player (Name) VALUES ('Evan Zabel');
+INSERT INTO Player (Name) VALUES ('Filipe Biondi');
+INSERT INTO Player (Name) VALUES ('Gabriel Padva');
+INSERT INTO Player (Name) VALUES ('Gavin Little');
+INSERT INTO Player (Name) VALUES ('Jack Pavier');
+INSERT INTO Player (Name) VALUES ('Jarett Noel');
+INSERT INTO Player (Name) VALUES ('Jarron Mueller');
+INSERT INTO Player (Name) VALUES ('Jason Felter');
+INSERT INTO Player (Name) VALUES ('Jason Hofer');
+INSERT INTO Player (Name) VALUES ('Jeff Lee');
+INSERT INTO Player (Name) VALUES ('Joel Zindel');
+INSERT INTO Player (Name) VALUES ('Jon Cahill');
+INSERT INTO Player (Name) VALUES ('Jon Isaacs');
+INSERT INTO Player (Name) VALUES ('Jordan Wenaas');
+INSERT INTO Player (Name) VALUES ('Josh Woelfel');
+INSERT INTO Player (Name) VALUES ('Joshua Smith');
+INSERT INTO Player (Name) VALUES ('JP Julien');
+INSERT INTO Player (Name) VALUES ('Kevin Lee');
+INSERT INTO Player (Name) VALUES ('Kevin Wenzel');
+INSERT INTO Player (Name) VALUES ('Kirill Dubrovskiy');
+INSERT INTO Player (Name) VALUES ('Leanne Padva');
+INSERT INTO Player (Name) VALUES ('Lukas Mager');
+INSERT INTO Player (Name) VALUES ('Mark Anderson');
+INSERT INTO Player (Name) VALUES ('Mark Tierney');
+INSERT INTO Player (Name) VALUES ('Martin McKaughan');
+INSERT INTO Player (Name) VALUES ('Matt Tierney');
+INSERT INTO Player (Name) VALUES ('Matty Jose');
+INSERT INTO Player (Name) VALUES ('Mike Clark');
+INSERT INTO Player (Name) VALUES ('Mike Funk');
+INSERT INTO Player (Name) VALUES ('Mike Spracklin');
+INSERT INTO Player (Name) VALUES ('Nicolas Desfeux');
+INSERT INTO Player (Name) VALUES ('Paul Bauerle');
+INSERT INTO Player (Name) VALUES ('Peter Czepuryk');
+INSERT INTO Player (Name) VALUES ('Phil Woelfel');
+INSERT INTO Player (Name) VALUES ('Pieter Boekhoff');
+INSERT INTO Player (Name) VALUES ('Rob Driscoll');
+INSERT INTO Player (Name) VALUES ('Rob Toth');
+INSERT INTO Player (Name) VALUES ('Sam Scott');
+INSERT INTO Player (Name) VALUES ('Sarain Soonias');
+INSERT INTO Player (Name) VALUES ('Scott Lahey');
+INSERT INTO Player (Name) VALUES ('Sean Martin');
+INSERT INTO Player (Name) VALUES ('Sean Peister');
+INSERT INTO Player (Name) VALUES ('Shawn Shoemaker');
+INSERT INTO Player (Name) VALUES ('Simon Hart');
+INSERT INTO Player (Name) VALUES ('Stefan Bellmont');
+INSERT INTO Player (Name) VALUES ('Taylor Arnett');
+INSERT INTO Player (Name) VALUES ('Tom Haight');
+INSERT INTO Player (Name) VALUES ('Tony Nguyen');
+INSERT INTO Player (Name) VALUES ('Ty Fraser');
+INSERT INTO Player (Name) VALUES ('Tyler Latuila');
+INSERT INTO Player (Name) VALUES ('Wayne Sopko');
+INSERT INTO Player (Name) VALUES ('Yarek Bartosz');
+INSERT INTO Player (Name) VALUES ('Zach Adams');
 
 INSERT INTO Game (sessionDate, isComplete) VALUES ('2018-09-25',true);
 INSERT INTO Game (sessionDate, isComplete) VALUES ('2018-10-01',true);

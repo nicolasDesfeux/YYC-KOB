@@ -9,11 +9,11 @@ public class Player {
     private double masterScore;
     private boolean hasResults;
 
-    public Player(long id, String name, double masterScore, boolean hasScore) {
+    public Player(long id, String name, boolean hasScore) {
         this.id = id;
         this.name = name;
-        this.masterScore = masterScore;
         this.hasResults = hasScore;
+        this.masterScore = KOB.INITIAL_SCORE;
     }
 
     public Player(String name) {

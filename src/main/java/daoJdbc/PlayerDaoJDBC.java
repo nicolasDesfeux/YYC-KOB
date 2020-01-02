@@ -1,7 +1,6 @@
 package daoJdbc;
 
 import daoInterface.PlayerDao;
-import dto.Game;
 import dto.Player;
 
 import java.sql.*;
@@ -91,37 +90,6 @@ public class PlayerDaoJDBC implements PlayerDao {
         return false;
     }
 
-    @Override
-    public List<Player> getPlayersRankings() {
-        List<Player> results = new ArrayList<>();
-        Connection connection = DatabaseConnection.getInstance().getConnection();
-        try {
-            Statement stmt = connection.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM player where hasScore=1 order by masterScore desc");
-            while (rs.next()) {
-                results.add(extractPlayerFromResultSet(rs));
-            }
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-        return results;
-    }
-
-    @Override
-    public List<Player> getAllPlayersFromGame(Game game) {
-        List<Player> results = new ArrayList<>();
-        Connection connection = DatabaseConnection.getInstance().getConnection();
-        try {
-            Statement stmt = connection.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM player where id in (select playerId from result where sessionId="+game.getId()+") order by masterScore desc");
-            while (rs.next()) {
-                results.add(extractPlayerFromResultSet(rs));
-            }
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-        return results;
-    }
 
     @Override
     public Player getPlayerByName(String name) {
@@ -139,24 +107,8 @@ public class PlayerDaoJDBC implements PlayerDao {
         return null;
     }
 
-    @Override
-    public boolean resetAllPlayersScore(int score) {
-        Connection connection = DatabaseConnection.getInstance().getConnection();
-        try {
-            PreparedStatement ps = connection.prepareStatement("UPDATE player SET masterScore=?, hasScore=0");
-            ps.setLong(1, score);
-            int i = ps.executeUpdate();
-            if(i == 1) {
-                return true;
-            }
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-        return false;
-    }
-
 
     private Player extractPlayerFromResultSet(ResultSet rs) throws SQLException {
-        return new Player(rs.getLong("id"), rs.getString("name"), rs.getDouble("masterScore"), rs.getBoolean("hasScore"));
+        return new Player(rs.getLong("id"), rs.getString("name"), rs.getBoolean("hasScore"));
     }
 }
