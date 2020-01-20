@@ -40,20 +40,26 @@ public class PlayerDaoJDBC implements PlayerDao {
     }
 
     @Override
-    public boolean insertPlayer(Player player) {
-            Connection connection = DatabaseConnection.getInstance().getConnection();
-            try {
-                PreparedStatement ps = connection.prepareStatement("INSERT INTO player (name, masterScore) VALUES (?, ?)");
-                ps.setString(1, player.getName());
-                ps.setDouble(2, player.getMasterScore());
-                int i = ps.executeUpdate();
-                if(i == 1) {
-                    return true;
+    public Player insertPlayer(Player player) {
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            PreparedStatement ps = connection.prepareStatement("INSERT INTO player (name) VALUES (?)", Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, player.getName());
+            int i = ps.executeUpdate();
+            if (i == 1) {
+                try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        player.setId(generatedKeys.getLong(1));
+                    } else {
+                        throw new SQLException("Creating player failed, no ID obtained.");
+                    }
                 }
+                return player;
+            }
             } catch (SQLException ex) {
                 ex.printStackTrace();
             }
-            return false;
+        return null;
     }
 
     @Override

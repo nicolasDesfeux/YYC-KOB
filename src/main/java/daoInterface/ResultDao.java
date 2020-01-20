@@ -9,7 +9,9 @@ import java.util.List;
 public interface ResultDao {
         Result getResult(int id);
         List<Result> getAllResults();
-        boolean insertResult(Result result);
+
+        Result insertResult(Result result);
+
         boolean updateResult(Result result);
 
         boolean updateResults(List<Result> results);

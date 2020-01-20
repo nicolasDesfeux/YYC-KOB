@@ -44,22 +44,29 @@ public class ResultDaoJDBC implements ResultDao {
     }
 
     @Override
-    public boolean insertResult(Result result) {
-            Connection connection = DatabaseConnection.getInstance().getConnection();
-            try {
-                PreparedStatement ps = connection.prepareStatement("INSERT INTO result (playerId, sessionId, result, score) VALUES (?, ?, ?, ?)");
-                ps.setLong(1, result.getPlayer().getId());
-                ps.setLong(2, result.getSession().getId());
-                ps.setLong(3, result.getResult());
-                ps.setDouble(4, result.getScore());
-                int i = ps.executeUpdate();
-                if(i == 1) {
-                    return true;
+    public Result insertResult(Result result) {
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            PreparedStatement ps = connection.prepareStatement("INSERT INTO result (playerId, sessionId, result, score) VALUES (?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
+            ps.setLong(1, result.getPlayer().getId());
+            ps.setLong(2, result.getSession().getId());
+            ps.setLong(3, result.getResult());
+            ps.setDouble(4, result.getScore());
+            int i = ps.executeUpdate();
+            if (i == 1) {
+                try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        result.setId(generatedKeys.getLong(1));
+                    } else {
+                        throw new SQLException("Creating player failed, no ID obtained.");
+                    }
                 }
+                return result;
+            }
             } catch (SQLException ex) {
                 ex.printStackTrace();
             }
-            return false;
+        return null;
     }
 
     @Override

@@ -33,7 +33,7 @@ public class RankingApiController implements RankingApi {
     public ResponseEntity<String> getRanking(@ApiParam(value = "Game at which the ranking needs to be generated. Leave empty for most current Ranking") @Valid @RequestParam(value = "gameId", required = false) Long gameId) {
         String accept = request.getHeader("Accept");
         if (accept != null && accept.contains("")) {
-            return new ResponseEntity<String>(KOB.getInstance().getPrintableRanking(gameId), HttpStatus.NOT_IMPLEMENTED);
+            return new ResponseEntity<String>(KOB.getInstance().getPrintableRanking(gameId), HttpStatus.OK);
         }
 
         return new ResponseEntity<String>(HttpStatus.NOT_IMPLEMENTED);

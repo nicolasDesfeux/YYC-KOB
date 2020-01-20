@@ -76,19 +76,27 @@ public class GameDaoJDBC implements GameDao {
 
 
     @Override
-    public boolean insertGame(Game game) {
-            Connection connection = DatabaseConnection.getInstance().getConnection();
-            try {
-                PreparedStatement ps = connection.prepareStatement("INSERT INTO game (sessionDate) VALUES (?)");
-                ps.setDate(1, game.getDate());
-                int i = ps.executeUpdate();
-                if(i == 1) {
-                    return true;
+    public Game insertGame(Game game) {
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            PreparedStatement ps = connection.prepareStatement("INSERT INTO game (sessionDate, isComplete) VALUES (?, ?)", Statement.RETURN_GENERATED_KEYS);
+            ps.setDate(1, game.getDate());
+            ps.setBoolean(2, game.isComplete());
+            int i = ps.executeUpdate();
+            if (i == 1) {
+                try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        game.setId(generatedKeys.getLong(1));
+                    } else {
+                        throw new SQLException("Creating player failed, no ID obtained.");
+                    }
                 }
+                return game;
+            }
             } catch (SQLException ex) {
                 ex.printStackTrace();
             }
-            return false;
+        return null;
     }
 
     @Override
@@ -130,7 +138,24 @@ public class GameDaoJDBC implements GameDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             Statement stmt = connection.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM game order by sessionDate desc limit 1");
+            ResultSet rs = stmt.executeQuery("SELECT * FROM game where isComplete order by sessionDate desc limit 1");
+            if (rs.next()) {
+                return extractGameFromResultSet(rs);
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public Game getGameClosestTo(Date asOfDate) {
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            Statement stmt = connection.createStatement();
+            PreparedStatement ps = connection.prepareStatement("SELECT * FROM game where isComplete and sessionDate<=? order by sessionDate desc limit 1");
+            ps.setDate(1, asOfDate);
+            ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 return extractGameFromResultSet(rs);
             }

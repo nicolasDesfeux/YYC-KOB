@@ -4,7 +4,7 @@ import kob.KOB;
 
 import java.sql.Date;
 
-public class Result {
+public class Result extends DataTransferObject<Result> {
     private long id;
     private Game session;
     private Player player;
@@ -109,5 +109,10 @@ public class Result {
                 " finished " + result +
                 ", scoring " + KOB.DF.format(score) +
                 " points (Original master score: " + KOB.DF.format(playerMasterScoreBeforeGame) + ")}";
+    }
+
+    @Override
+    public Result save() {
+        return KOB.getInstance().getResultDao().insertResult(this);
     }
 }

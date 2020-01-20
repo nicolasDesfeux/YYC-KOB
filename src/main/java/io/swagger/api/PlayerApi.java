@@ -25,10 +25,10 @@ public interface PlayerApi {
             @ApiResponse(code = 200, message = "New player succesfully added"),
             @ApiResponse(code = 405, message = "Invalid input")})
     @RequestMapping(value = "/player",
-            produces = {"text/plain"},
+            produces = {"application/json"},
             consumes = {"application/x-www-form-urlencoded"},
             method = RequestMethod.POST)
-    ResponseEntity<Void> addPlayer(@ApiParam(value = "Name of the new player", required=true) @RequestParam(value="name", required=true)  String name);
+    ResponseEntity<String> addPlayer(@ApiParam(value = "Name of the new player", required = true) @RequestParam(value = "name", required = true) String name);
 
 
     @ApiOperation(value = "Deletes a player", nickname = "deletePlayer", notes = "", tags = {"Player",})
@@ -42,20 +42,20 @@ public interface PlayerApi {
 
     @ApiOperation(value = "Finds Player by name", nickname = "findPlayerByName", notes = "Will look for any player matching the name exactly (not case sensitive)", response = String.class, tags = {"Player",})
     @ApiResponses(value = {
-            @ApiResponse(code = 200, message = "Player found", response = String.class),
+            @ApiResponse(code = 302, message = "Player was found and returned", response = String.class),
             @ApiResponse(code = 404, message = "Couldn't find a player matching that name. ")})
     @RequestMapping(value = "/player/findByName",
-            produces = {"text/plain"},
+            produces = {"application/json"},
             method = RequestMethod.GET)
     ResponseEntity<String> findPlayerByName(@NotNull @ApiParam(value = "Name to search for", required = true) @Valid @RequestParam(value = "name", required = true) String name);
 
 
     @ApiOperation(value = "Finds a Player by Id", nickname = "getPlayerById", notes = "Returns a single player", response = String.class, tags = {"Player",})
     @ApiResponses(value = {
-            @ApiResponse(code = 200, message = "Player found", response = String.class),
+            @ApiResponse(code = 302, message = "Player found", response = String.class),
             @ApiResponse(code = 404, message = "Player not found")})
     @RequestMapping(value = "/player/{playerId}",
-            produces = {"text/plain"},
+            produces = {"application/json"},
             method = RequestMethod.GET)
     ResponseEntity<String> getPlayerById(@ApiParam(value = "ID of player to return", required = true) @PathVariable("playerId") Long playerId);
 
@@ -64,9 +64,9 @@ public interface PlayerApi {
     @ApiResponses(value = {
             @ApiResponse(code = 405, message = "Invalid input")})
     @RequestMapping(value = "/player/{playerId}",
-            produces = {"text/plain"},
+            produces = {"application/json"},
             consumes = {"application/x-www-form-urlencoded"},
             method = RequestMethod.POST)
-    ResponseEntity<Void> updatePlayerWithForm(@ApiParam(value = "ID of player that needs to be updated", required = true) @PathVariable("playerId") Long playerId, @ApiParam(value = "Updated name of the player", required = true) @RequestParam(value = "name", required = true) String name);
+    ResponseEntity<String> updatePlayerWithForm(@ApiParam(value = "ID of player that needs to be updated", required = true) @PathVariable("playerId") Long playerId, @ApiParam(value = "Updated name of the player", required = true) @RequestParam(value = "name", required = true) String name);
 
 }

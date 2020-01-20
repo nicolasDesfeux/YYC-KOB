@@ -9,7 +9,7 @@ public interface PlayerDao {
 
     List<Player> getAllPlayers();
 
-    boolean insertPlayer(Player player);
+    Player insertPlayer(Player player);
 
     boolean updatePlayer(Player player);
 

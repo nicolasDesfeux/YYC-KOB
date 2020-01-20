@@ -1,12 +1,15 @@
 package dto;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import kob.KOB;
 
 import java.util.Objects;
 
-public class Player {
-    private long id;
+public class Player extends DataTransferObject<Player> {
+    private Long id;
     private String name;
+    @JsonIgnore
     private double masterScore;
+    @JsonIgnore
     private boolean hasResults;
 
     public Player(long id, String name, boolean hasScore) {
@@ -22,11 +25,11 @@ public class Player {
         this.hasResults = false;
     }
 
-    public long getId() {
+    public Long getId() {
         return id;
     }
 
-    public void setId(long id) {
+    public void setId(Long id) {
         this.id = id;
     }
 
@@ -80,5 +83,16 @@ public class Player {
     @Override
     public int hashCode() {
         return Objects.hash(id, name);
+    }
+
+    @Override
+    public Player save() {
+        if (this.id == null) {
+            return KOB.getInstance().getPlayerDao().insertPlayer(this);
+        } else {
+            KOB.getInstance().getPlayerDao().updatePlayer(this);
+            return this;
+        }
+
     }
 }
