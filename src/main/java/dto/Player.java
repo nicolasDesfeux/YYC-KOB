@@ -2,13 +2,14 @@ package dto;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import kob.KOB;
 
+import java.math.BigDecimal;
 import java.util.Objects;
 
 public class Player extends DataTransferObject<Player> {
     private Long id;
-    private String name;
+    private final String name;
     @JsonIgnore
-    private double masterScore;
+    private BigDecimal masterScore;
     @JsonIgnore
     private boolean hasResults;
 
@@ -16,12 +17,12 @@ public class Player extends DataTransferObject<Player> {
         this.id = id;
         this.name = name;
         this.hasResults = hasScore;
-        this.masterScore = KOB.INITIAL_SCORE;
+        this.masterScore = BigDecimal.valueOf(KOB.INITIAL_SCORE);
     }
 
     public Player(String name) {
         this.name = name;
-        this.masterScore = KOB.INITIAL_SCORE;
+        this.masterScore = BigDecimal.valueOf(KOB.INITIAL_SCORE);
         this.hasResults = false;
     }
 
@@ -37,15 +38,11 @@ public class Player extends DataTransferObject<Player> {
         return name;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public double getMasterScore() {
+    public BigDecimal getMasterScore() {
         return masterScore;
     }
 
-    public void setMasterScore(double masterScore) {
+    public void setMasterScore(BigDecimal masterScore) {
         this.masterScore = masterScore;
     }
 
@@ -68,7 +65,7 @@ public class Player extends DataTransferObject<Player> {
 
 
     public static int compare(Player o1, Player o2) {
-        return Double.compare(o1.getMasterScore(), o2.getMasterScore());
+        return o1.getMasterScore().compareTo(o2.getMasterScore());
     }
 
     @Override
@@ -76,7 +73,7 @@ public class Player extends DataTransferObject<Player> {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Player player = (Player) o;
-        return id == player.id &&
+        return Objects.equals(id, player.id) &&
                 Objects.equals(name, player.name);
     }
 

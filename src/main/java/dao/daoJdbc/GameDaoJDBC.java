@@ -1,9 +1,10 @@
-package daoJdbc;
+package dao.daoJdbc;
 
-import daoInterface.GameDao;
+import dao.daoInterface.GameDao;
 import dto.Game;
 
 import java.sql.*;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -80,8 +81,8 @@ public class GameDaoJDBC implements GameDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             PreparedStatement ps = connection.prepareStatement("INSERT INTO game (sessionDate, isComplete) VALUES (?, ?)", Statement.RETURN_GENERATED_KEYS);
-            ps.setDate(1, game.getDate());
-            ps.setBoolean(2, game.isComplete());
+            ps.setDate(1, Date.valueOf(game.getDate()));
+            ps.setBoolean(2, true);
             int i = ps.executeUpdate();
             if (i == 1) {
                 try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
@@ -104,7 +105,7 @@ public class GameDaoJDBC implements GameDao {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             PreparedStatement ps = connection.prepareStatement("UPDATE game SET sessionDate=?, highestPoint=?, lowestPoint=? WHERE id=?");
-            ps.setDate(1, game.getDate());
+            ps.setDate(1, Date.valueOf(game.getDate()));
             ps.setDouble(2, game.getHighestPoint());
             ps.setDouble(3, game.getLowestPoint());
             ps.setLong(4, game.getId());
@@ -149,12 +150,12 @@ public class GameDaoJDBC implements GameDao {
     }
 
     @Override
-    public Game getGameClosestTo(Date asOfDate) {
+    public Game getGameClosestTo(LocalDate asOfDate) {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
             Statement stmt = connection.createStatement();
             PreparedStatement ps = connection.prepareStatement("SELECT * FROM game where isComplete and sessionDate<=? order by sessionDate desc limit 1");
-            ps.setDate(1, asOfDate);
+            ps.setDate(1, Date.valueOf(asOfDate));
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 return extractGameFromResultSet(rs);
@@ -167,6 +168,6 @@ public class GameDaoJDBC implements GameDao {
 
 
     private Game extractGameFromResultSet(ResultSet rs) throws SQLException {
-        return new Game(rs.getLong("id"), rs.getDate("sessionDate"), rs.getDouble("highestPoint"), rs.getDouble("lowestPoint"), rs.getBoolean("isComplete"));
+        return new Game(rs.getLong("id"), rs.getDate("sessionDate").toLocalDate(), rs.getDouble("highestPoint"), rs.getDouble("lowestPoint"));
     }
 }

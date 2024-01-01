@@ -1,18 +1,17 @@
 package dto;
 
 
-import daoInterface.ResultDao;
-import daoJdbc.ResultDaoJDBC;
+import dao.daoInterface.ResultDao;
+import dao.daoJdbc.ResultDaoJDBC;
 import kob.KOB;
 
-import java.io.File;
-import java.sql.Date;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 
 public class Game extends DataTransferObject<Game> {
     private long id;
-    private Date date;
+    private LocalDate date;
     private double highestPoint;
     private double lowestPoint;
     private boolean isComplete;
@@ -23,7 +22,7 @@ public class Game extends DataTransferObject<Game> {
             {20, 10, 0, 0, 15, 5, 0, 0, 10, 0, 0, 0, 5, 0, 0, 0},
             {25, 15, 0, 0, 20, 10, 0, 0, 15, 5, 0, 0, 10, 0, 0, 0, 5, 0, 0, 0}};
 
-    public Game(long id, Date date, double highestPoint, double lowestPoint) {
+    public Game(long id, LocalDate date, double highestPoint, double lowestPoint) {
         this.id = id;
         this.date = date;
         this.highestPoint = highestPoint;
@@ -31,12 +30,12 @@ public class Game extends DataTransferObject<Game> {
         this.isComplete = false;
     }
 
-    public Game(Date date) {
+    public Game(LocalDate date) {
         this.date = date;
         this.isComplete = false;
     }
 
-    public Game(long id, Date date, double highestPoint, double lowestPoint, boolean isComplete) {
+    public Game(long id, LocalDate date, double highestPoint, double lowestPoint, boolean isComplete) {
         this.id = id;
         this.date = date;
         this.highestPoint = highestPoint;
@@ -44,12 +43,8 @@ public class Game extends DataTransferObject<Game> {
         this.isComplete = isComplete;
     }
 
-    public Date getDate() {
+    public LocalDate getDate() {
         return date;
-    }
-
-    public void setDate(Date date) {
-        this.date = date;
     }
 
     public long getId() {
@@ -76,13 +71,7 @@ public class Game extends DataTransferObject<Game> {
         this.lowestPoint = lowestPoint;
     }
 
-    public boolean isComplete() {
-        return isComplete;
-    }
 
-    public void setComplete(boolean complete) {
-        isComplete = complete;
-    }
 
     @Override
     public String toString() {
@@ -92,10 +81,6 @@ public class Game extends DataTransferObject<Game> {
                 ", highestPoint=" + highestPoint +
                 ", lowestPoint=" + lowestPoint +
                 "}\n";
-    }
-
-    public File getGameScoreSheetAsPDF() {
-        return null;
     }
 
     @Override
@@ -112,7 +97,7 @@ public class Game extends DataTransferObject<Game> {
         game.append("<Participants>");
         ResultDao resultDao = new ResultDaoJDBC();
         List<Result> allResultsFromGame = resultDao.getAllResultsFromGame(this);
-        allResultsFromGame.sort(Comparator.comparingLong(Result::getResult));
+        allResultsFromGame.sort(Comparator.comparingDouble(Result::getResult));
         for (Result result : allResultsFromGame) {
             game.append("<Participant>");
             game.append("<PlayerName>").append(result.getPlayer().getName()).append("</PlayerName>");

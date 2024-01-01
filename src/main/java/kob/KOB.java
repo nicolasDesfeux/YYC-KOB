@@ -1,19 +1,22 @@
 package kob;
 
-import daoInterface.GameDao;
-import daoInterface.PlayerDao;
-import daoInterface.ResultDao;
-import daoJdbc.DatabaseConnection;
-import daoJdbc.GameDaoJDBC;
-import daoJdbc.PlayerDaoJDBC;
-import daoJdbc.ResultDaoJDBC;
+import dao.daoGSheet.GSheetConnector;
+import dao.daoGSheet.GameDaoGSheet;
+import dao.daoGSheet.PlayerDaoGSheet;
+import dao.daoGSheet.ResultDaoGSheet;
+import dao.daoInterface.GameDao;
+import dao.daoInterface.PlayerDao;
+import dao.daoInterface.ResultDao;
+import dao.daoJdbc.GameDaoJDBC;
+import dao.daoJdbc.PlayerDaoJDBC;
+import dao.daoJdbc.ResultDaoJDBC;
 import dto.Game;
 import dto.Player;
 import dto.Result;
 
 import java.io.IOException;
-import java.sql.Date;
-import java.sql.*;
+import java.io.InputStream;
+import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.util.*;
@@ -23,32 +26,48 @@ import java.util.stream.Collectors;
  * This is the main application class. It queries and utilizes the different objects from the model to display rankings statistics etc
  */
 public class KOB {
-
     // TODO Move those settings to properties database.
     public final static int INITIAL_SCORE = 50;
-    public final static int INITAL_BUYIN = 5;
-    private ResultDao resultDao;
-    private PlayerDao playerDao;
-    public final static DecimalFormat DF = new DecimalFormat("0.0");
-    private final static int RECENT_GAMES = 15;
-    // TODO this is a bit annoying, because now everytime we had a game, we need to get ride of older games, and recalculate everything...
-    public final static boolean LIMIT_TO_A_YEAR = true;
+    //public final static int INITIAL_BUYIN = 5;
+    private final ResultDao resultDao;
+    private final PlayerDao playerDao;
     // Objects to access data.
-    private GameDao gameDao;
+    private final GameDao gameDao;
+    public final static DecimalFormat DF = new DecimalFormat("0.0");
+    // TODO this is a bit annoying, because now everytime we add a game, we need to get ride of older games, and recalculate everything...
+    public final static boolean LIMIT_TO_A_YEAR = true;
 
     private static KOB single_instance = null;
     /**
      * Starts the system, and sets up data access. It also initializes the data if need be.
      */
     public KOB() {
-        this.gameDao = new GameDaoJDBC();
-        this.resultDao = new ResultDaoJDBC();
-        this.playerDao = new PlayerDaoJDBC();
+        Properties properties = new Properties();
+        String daoType = "";
         try {
-            this.initialize();
-        } catch (SQLException e) {
-            e.printStackTrace();
+            InputStream input = KOB.class.getResourceAsStream("/config.properties");
+            // Load the properties file
+            properties.load(input);
+
+            // Get values using keys
+            daoType = properties.getProperty("dao.type");
+            assert input != null;
+            input.close();
+
+        } catch (IOException e) {
+            System.out.println("Could not load properties " + e);
         }
+
+        if(daoType.equals("GSheet")){
+            this.gameDao = new GameDaoGSheet();
+            this.resultDao = new ResultDaoGSheet();
+            this.playerDao = new PlayerDaoGSheet();
+        }else{
+            this.gameDao = new GameDaoJDBC();
+            this.resultDao = new ResultDaoJDBC();
+            this.playerDao = new PlayerDaoJDBC();
+        }
+        this.initialize();
     }
 
     // static method to create instance of Singleton class
@@ -60,78 +79,34 @@ public class KOB {
     }
 
     public static void main(String[] args) {
-        try {
-            System.out.println("Press a key to get started");
-            System.in.read();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        // Read all results from
         KOB kob = getInstance();
+        kob.persistRanking();
 
-        // Show some behaviours
-        // Print the current ranking based on player scores.
-        System.out.println(kob.getPrintableRanking());
-        Game g = new Game(Date.valueOf("2020-01-02"));
-        g.setComplete(true);
-        g = g.save();
-        List<Result> result = new ArrayList<>();
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Scott Lahey"), 1));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Josh Woelfel"), 2));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Joel Zindel"), 5));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Jarron Mueller"), 4));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Ben Hopman"), 6));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Matty Jose"), 4));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Phil Woelfel"), 10));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Dan Padva"), 8));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Aadam Nanji"), 6));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Aaron Feldman"), 9));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Rob Driscoll"), 11));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Ed Djonlich"), 14));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Wayne Sopko"), 13));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Martin McKaughan"), 15));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Ben Driscoll"), 12));
-        result.add(new Result(g, kob.getPlayerDao().getPlayerByName("Jack Pavier"), 15));
 
-        for (Result result1 : result) {
-            result1.save();
-        }
-        kob.updateResultsFromGame(g);
-        System.out.println(g.getXmlExpanded());
+    }
 
-        System.out.println(kob.getPrintableRankingAtDate(Date.valueOf("2020-01-06")));
-        /*System.out.println(kob.getPrintableRanking());
-        // Print stats on players.
-        kob.printPlayerStats();
-        // Print stats on the tiers (victory percentages,...)
-        kob.printTierStats();*/
-
+    private void persistRanking() {
+        if(playerDao instanceof PlayerDaoGSheet)
+            GSheetConnector.writeRanking(this.getPlayersRankingAtGame(this.gameDao.getLastCompletedGame()));
+        else
+            System.out.println(this.getPrintableRanking());
     }
 
     public ResultDao getResultDao() {
         return resultDao;
     }
 
-    public void setResultDao(ResultDao resultDao) {
-        this.resultDao = resultDao;
-    }
-
     public PlayerDao getPlayerDao() {
         return playerDao;
-    }
-
-    public void setPlayerDao(PlayerDao playerDao) {
-        this.playerDao = playerDao;
     }
 
     public GameDao getGameDao() {
         return gameDao;
     }
 
-    public void setGameDao(GameDao gameDao) {
-        this.gameDao = gameDao;
-    }
-
-    private void printTierStats() {
+    /*public String printTierStats() {
+        String statsString = "";
         List<Result> results = resultDao.getAllResults();
         List<List<Player>> tmp = new ArrayList<>();
         for (Result result : results) {
@@ -161,7 +136,7 @@ public class KOB {
                     }
                 }
                 if (top != null) {
-                    System.out.println(top.getName() + ": " + Math.toIntExact(count * 100 / nbGames) + "% (" + count + " victories in " + nbGames + " appearances)");
+                    statsString +=top.getName() + ": " + Math.toIntExact(count * 100 / nbGames) + "% (" + count + " victories in " + nbGames + " appearances)appearances\n";
                 }
                 while (tmp.get(i).contains(top)) {
                     tmp.get(i).remove(top);
@@ -169,6 +144,7 @@ public class KOB {
             }
 
         }
+        return statsString;
     }
 
     public static <T> T mostCommon(List<T> list) {
@@ -187,90 +163,37 @@ public class KOB {
         }
 
         return max == null ? null : max.getKey();
-    }
+    }*/
 
-    private void printPlayerStats() {
+    public String printPlayerStats() {
         //Players with the most games
         int nbGames = gameDao.getAllCompleteGames().size();
-        List<Player> mostRegularPlayers = new ArrayList<>();
-        List<Player> leastRegularPlayers = new ArrayList<>();
+        Map<Player,Integer> mostRegularPlayers = new HashMap<>();
         for (Player player : playerDao.getAllPlayers()) {
-            if (mostRegularPlayers.isEmpty()) {
-                mostRegularPlayers.add(player);
-            } else {
-                if (resultDao.getAllResultsFromPlayer(player).size() > resultDao.getAllResultsFromPlayer(mostRegularPlayers.get(0)).size()) {
-                    mostRegularPlayers.clear();
-                    mostRegularPlayers.add(player);
-                } else if (resultDao.getAllResultsFromPlayer(player).size() == resultDao.getAllResultsFromPlayer(mostRegularPlayers.get(0)).size()) {
-                    mostRegularPlayers.add(player);
-                }
-            }
-
-            if (leastRegularPlayers.isEmpty()) {
-                leastRegularPlayers.add(player);
-            } else {
-                if (resultDao.getAllResultsFromPlayer(player).size() < resultDao.getAllResultsFromPlayer(leastRegularPlayers.get(0)).size()) {
-                    leastRegularPlayers.clear();
-                    leastRegularPlayers.add(player);
-                } else if (resultDao.getAllResultsFromPlayer(player).size() == resultDao.getAllResultsFromPlayer(leastRegularPlayers.get(0)).size()) {
-                    leastRegularPlayers.add(player);
-                }
-            }
+            mostRegularPlayers.put(player, resultDao.getAllResultsFromPlayer(player).size());
         }
+        mostRegularPlayers = mostRegularPlayers.entrySet()
+                .stream()
+                .sorted(Map.Entry.comparingByValue())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
         StringBuilder appearanceString = new StringBuilder();
-        appearanceString.append("Most regular player")
-                .append(mostRegularPlayers.size() > 1 ? "s (" : " (")
-                .append(resultDao.getAllResultsFromPlayer(mostRegularPlayers.get(0)).size())
-                .append(" out of ")
-                .append(nbGames)
-                .append(" games): \n");
-        for (Player mostRegularPlayer : mostRegularPlayers) {
-            appearanceString.append(mostRegularPlayer.getName()).append("\n");
+        appearanceString.append("Most regular players: ")
+                .append(mostRegularPlayers.size() > 1 ? "s (" : " (");
+
+        for (Player mostRegularPlayer : mostRegularPlayers.keySet()) {
+            appearanceString.append(mostRegularPlayer.getName()).append("\n")
+                    .append(mostRegularPlayers.get(mostRegularPlayer))
+                    .append(" out of ")
+                    .append(nbGames)
+                    .append(" games): \n");
         }
-        appearanceString.append("\nLeast regular player").append(leastRegularPlayers.size() > 1 ? "s (" : " (").append(resultDao.getAllResultsFromPlayer(leastRegularPlayers.get(0)).size()).append(" games)").append(": \n");
-        for (Player player : leastRegularPlayers) {
-            appearanceString.append(player.getName()).append("\n");
-        }
-        System.out.println(appearanceString);
+        return appearanceString.toString();
     }
 
-    private void initialize() throws SQLException {
-
+    private void initialize() {
         // Check if initialization is required.
-        Connection connection = DatabaseConnection.getInstance().getConnection();
-        boolean initialized = false;
-        try {
-            Statement stmt = connection.createStatement();
-            String sql = "SELECT Value FROM Properties where name='kob.initializationCompleted'";
-            ResultSet rs = stmt.executeQuery(sql);
-            while (rs.next()) {
-                initialized = rs.getString(1).equals("true");
-            }
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-        if (!initialized) {
-            System.out.println("Initialization required...");
-            java.util.Date start = new java.util.Date();
+        // TODO none of that should be there
 
-            for (Game game : gameDao.getAllCompleteGames()) {
-                // Games are ordered by session dates.
-                this.updateResultsFromGame(game);
-            }
-            try {
-                // Mark the system as initialized.
-                Statement stmt = connection.createStatement();
-                String sql = "UPDATE Properties set Value='true' where name='kob.initializationCompleted'";
-                stmt.executeUpdate(sql);
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-            }
-            DatabaseConnection.getInstance().getConnection().close();
-            java.util.Date end = new java.util.Date();
-            System.out.println("...Initialization done - " + ((double) (end.getTime() - start.getTime())) / 1000 + " seconds. ");
-        } else {
-            System.out.println("Ranking has already been initialized. ");
-        }
 
 
     }
@@ -281,16 +204,7 @@ public class KOB {
      * @return A formatted string that shows the current player ranking.
      */
     public String getPrintableRanking() {
-        return "Current Ranking: \n" + getPrintableRankingAtGame(gameDao.getLastCompletedGame());
-    }
-
-    public String getPrintableRanking(Long gameId) {
-        if (gameId == null) {
-            return "Current Ranking: \n" + getPrintableRanking();
-        } else {
-            return getPrintableRankingAtGame(gameDao.getGame(gameId));
-        }
-
+        return getPrintableRankingAtGame(gameDao.getLastCompletedGame());
     }
 
     public String getPrintableRankingAtGame(Game game) {
@@ -302,124 +216,99 @@ public class KOB {
         return rankingString.toString();
     }
 
-    public String getPrintableRankingAtDate(Date date) {
-        List<Player> rankings = getPlayersRankingAtDate(date);
-        StringBuilder rankingString = new StringBuilder();
-        for (int i = 0; i < rankings.size(); i++) {
-            rankingString.append(i + 1).append(". ").append(rankings.get(i).getName()).append(" (").append(DF.format(rankings.get(i).getMasterScore())).append(")\n");
-        }
-        return rankingString.toString();
-    }
 
     private List<Player> getPlayersRankingAtGame(Game game) {
-        List<Player> ranking = playerDao.getAllPlayers();
-        for (Player player : ranking) {
+        //Get all the games before (inclusive) of the one in parameter
+        List<Game> games = gameDao.getAllGames().stream().filter(a -> a.equals(game) || a.getDate().isBefore(game.getDate())).collect(Collectors.toList());
+
+        // Always start at initial score
+        for (Player player : playerDao.getAllPlayers()) {
             player.setHasResults(false);
+            player.setMasterScore(BigDecimal.valueOf(INITIAL_SCORE));
         }
 
-        for (Player player : ranking) {
-            setPlayerMasterScoreAtDate(game.getDate(), player);
+        //Make sure we are looking at games starting at the oldest ones.
+        games.sort(Comparator.comparing(Game::getDate));
+        for (Game game1 : games) {
+            // TODO skip games that have less than 9 results.
+            // Get all the results from that game
+            List<Result> results = resultDao.getAllResultsFromGame(game1);
+            List<Player> gamePlayers = new ArrayList<>();
+            for (Result result : results) {
+                // TODO This should probably be handled a bit differently.
+                gamePlayers.add(playerDao.getAllPlayers().get(playerDao.getAllPlayers().indexOf(result.getPlayer())));
+            }
+            // Skip is no current players involved
+            if(gamePlayers.isEmpty()){
+                continue;
+            }
+
+            // Sort the players by master scores
+            gamePlayers.sort(Comparator.comparing(Player::getMasterScore));
+            Collections.reverse(gamePlayers);
+            // Calculate the min and max point for each game.
+            // Max: Top 25% average + 10, unless the highest player has more
+            // Min: Bottom 25% average - 10, unless the lowest player has less
+            int sizeForMarging = results.size()/4;
+            OptionalDouble average = gamePlayers.subList(0,sizeForMarging).stream().mapToDouble(p -> p.getMasterScore().doubleValue()).average();
+            double averageTop = average.isPresent() ? average.getAsDouble()+10 : 0;
+            if(averageTop<gamePlayers.get(0).getMasterScore().doubleValue())
+                averageTop = gamePlayers.get(0).getMasterScore().doubleValue();
+            average = gamePlayers.subList(gamePlayers.size()-sizeForMarging,gamePlayers.size()).stream().mapToDouble(p -> p.getMasterScore().doubleValue()).average();
+            double averageBottom = average.isPresent() ? average.getAsDouble()-10 : 0;
+            if(averageBottom>gamePlayers.get(gamePlayers.size()-1).getMasterScore().doubleValue()){
+                averageBottom = gamePlayers.get(gamePlayers.size()-1).getMasterScore().doubleValue();
+            }
+            game1.setHighestPoint(averageTop);
+            game1.setLowestPoint(averageBottom);
+            // Done min/max
+
+            // Set game scores
+            for (Result result : results) {
+                    double score = game1.getHighestPoint() - ((result.getResult() - 1) * (game1.getHighestPoint() - game1.getLowestPoint()) / (results.size() - 1));
+                    result.setScore(score);
+                    // Save the player's master score before applying the new result to the master score.
+                    result.setPlayerMasterScoreBeforeGame(playerDao.getAllPlayers().get(playerDao.getAllPlayers().indexOf(result.getPlayer())).getMasterScore());
+            }
+
+            // Set new master scores
+            // Update the master scores for all players
+            for (Player player : playerDao.getAllPlayers()) {
+                this.setPlayerMasterScoreAtDate(game1.getDate(), player);
+            }
         }
-        System.out.println(ranking.stream().filter(player -> !player.isHasResults()).collect(Collectors.toList()));
-        ranking = ranking.stream().filter(Player::isHasResults).sorted(Player::compare).collect(Collectors.toList());
-        Collections.reverse(ranking);
-        return ranking;
+        List<Player> players = playerDao.getAllPlayers().stream().filter(Player::isHasResults).sorted(Player::compare).collect(Collectors.toList());
+        Collections.reverse(players);
+        return players;
     }
 
-    private List<Player> getPlayersRankingAtDate(Date date) {
-        List<Player> ranking = playerDao.getAllPlayers();
-        for (Player player : ranking) {
-            player.setHasResults(false);
-        }
-
-        for (Player player : ranking) {
-            setPlayerMasterScoreAtDate(date, player);
-        }
-        System.out.println(ranking.stream().filter(player -> !player.isHasResults()).collect(Collectors.toList()));
-        ranking = ranking.stream().filter(Player::isHasResults).sorted(Player::compare).collect(Collectors.toList());
-        Collections.reverse(ranking);
-        return ranking;
-    }
-
-    private double getPlayerResultAverageAtDate(Date date, Player player) {
-        List<Result> allResultsFromPlayer = resultDao.getAllResultsFromPlayer(player);
-        if (KOB.LIMIT_TO_A_YEAR) {
-            allResultsFromPlayer = allResultsFromPlayer.stream().filter(result -> result.getDateForLight().after(new Date(Date.valueOf(LocalDate.now()).getTime() - 31556952000L))).collect(Collectors.toList());
-        }
-        allResultsFromPlayer.add(new Result(-1, 0, INITIAL_SCORE, new Date(0), 0));
-        return allResultsFromPlayer.stream().filter(result -> result.getDateForLight().before(date)).mapToDouble(Result::getScore).average().getAsDouble();
-    }
-
-    private void setPlayerMasterScoreAtDate(Date asOfDate, Player player) {
-        Date cutOffDate = new Date(0);
-        // The cut off date is made by removing 15 results from the list of results. That is assuming that the id and date are in the same order...
-        Game cutOffgame = gameDao.getGame(gameDao.getGameClosestTo(asOfDate).getId() - RECENT_GAMES);
-        if (cutOffgame != null) {
-            cutOffDate = cutOffgame.getDate();
-        }
+    private void setPlayerMasterScoreAtDate(LocalDate asOfDate, Player player) {
+        // Get all the results for a player
         List<Result> allPlayerResults = resultDao.getAllResultsFromPlayer(player);
         if (KOB.LIMIT_TO_A_YEAR) {
-            allPlayerResults = allPlayerResults.stream().filter(result -> result.getDateForLight().after(new Date(Date.valueOf(LocalDate.now()).getTime() - 31556952000L))).collect(Collectors.toList());
+            // Filter all results older than a year.
+            allPlayerResults = allPlayerResults.stream().filter(result -> result.getSession().getDate().isAfter(LocalDate.now().minusYears(1))).collect(Collectors.toList());
         }
-        Date finalCutOffDate = cutOffDate;
-        List<Result> resultsBeforeCutOffDate = allPlayerResults.stream().filter(it -> (it.getDateForLight().before(finalCutOffDate) || it.getDateForLight().equals(finalCutOffDate)) && (it.getDateForLight().equals(asOfDate) || it.getDateForLight().before(asOfDate))).collect(Collectors.toList());
-        List<Result> resultsAfterCutOffDate = allPlayerResults.stream().filter(it -> it.getDateForLight().after(finalCutOffDate) && (it.getDateForLight().equals(asOfDate) || it.getDateForLight().before(asOfDate))).collect(Collectors.toList());
 
-        double newScore = KOB.INITIAL_SCORE;
-        if (resultsAfterCutOffDate.size() > 0 && resultsBeforeCutOffDate.size() > 0) {
-            double averageOld = resultsBeforeCutOffDate.stream().mapToDouble(Result::getScore).average().getAsDouble();
-            double newScores = resultsAfterCutOffDate.stream().mapToDouble(Result::getScore).sum();
-            newScore = (averageOld + newScores) / (resultsAfterCutOffDate.size() + 1);
+        // TODO this should be the last 8 games, not the last two weeks...
+        List<Result> lastTwoWeeks = allPlayerResults.stream().filter(result -> result.getScore()!=0 && result.getSession().getDate().isAfter(asOfDate.minusWeeks(2))).collect(Collectors.toList());
+        // TODO this should be games 9 to 16, not a date based value
+        OptionalDouble previousTwoWeeks = allPlayerResults.stream().filter(result -> result.getScore()!=0 && result.getSession().getDate().isBefore(asOfDate.minusWeeks(2))
+                && result.getSession().getDate().isAfter(asOfDate.minusWeeks(4))).mapToDouble(Result::getScore).average();
+        // TODO this should game 17 to up to a year.
+        OptionalDouble rest = allPlayerResults.stream().filter(result -> result.getScore()!=0 && result.getSession().getDate().isBefore(asOfDate.minusWeeks(4))).mapToDouble(Result::getScore).average();
+
+        long nbResult = lastTwoWeeks.size() + (previousTwoWeeks.isPresent()?1:0) + (rest.isPresent()?1:0);
+
+        if(nbResult > 0){
+            // Individual results from the last 2 weeks counted a individual, one more result is the average from game 9 to 16, and one more result is the average from game 17 to up to a year.
+            // Maximum 10 results
+            assert nbResult <= 10;
+            double masterScore = (lastTwoWeeks.stream().mapToDouble(Result::getScore).sum() + (previousTwoWeeks.isPresent()?previousTwoWeeks.getAsDouble():0) + (rest.isPresent()?rest.getAsDouble():0)) / nbResult;
+            player.setMasterScore(BigDecimal.valueOf(masterScore));
             player.setHasResults(true);
-
-        } else if (resultsAfterCutOffDate.size() > 0) {
-            double newScores = resultsAfterCutOffDate.stream().mapToDouble(Result::getScore).sum();
-            newScore = (INITIAL_SCORE + newScores) / (resultsAfterCutOffDate.size() + 1);
-            player.setHasResults(true);
-        } else if (resultsBeforeCutOffDate.size() > 0) {
-            newScore = resultsBeforeCutOffDate.stream().mapToDouble(Result::getScore).average().getAsDouble();
-            player.setHasResults(true);
-        }
-        player.setMasterScore(newScore);
-    }
-
-    /**
-     * This method uses the results from a game to calculate each player score for the provided game.
-     *
-     * @param game The game that will be updated.
-     */
-    private void updateResultsFromGame(Game game) {
-        if (game.isComplete()) {
-            List<Result> allResultsFromGame = resultDao.getAllResultsFromGameOrderByOriginalMasterScore(game);
-            int numberOfAttendees = allResultsFromGame.size();
-            int factor = numberOfAttendees / 4;
-
-            // To start, we need to know the player's master score at the start of the game.
-            // TODO Check what happens when a new game is created, but dated before the most recent game... Probably some initialization needed.
-            for (Result result : allResultsFromGame) {
-                if (result.getPlayerMasterScoreBeforeGame() == 0) {
-                    // TODO This is where the problem is in the current ranking. A player score at the start of the game is not it's current MasterScore, but the average of all its scores.
-                    result.setPlayerMasterScoreBeforeGame(getPlayerResultAverageAtDate(game.getDate(), result.getPlayer()));
-                }
-            }
-            allResultsFromGame.sort(Result::compare);
-            // Top score is calculated based on the top 25% of the best available players + 10.
-            // If the value is lower than the best player's score, we'll use that score instead.
-            double topScore = Math.max(10 + (allResultsFromGame.subList(0, factor).stream().mapToDouble(Result::getPlayerMasterScoreBeforeGame).sum() / factor), allResultsFromGame.get(0).getPlayerMasterScoreBeforeGame());
-            // Bottom score is calculated based on the bottom 25% of the best available players - 10.
-            // If the value is lower than the best player's score, we'll use that score instead.
-            double bottomScore = Math.min(-10 + (allResultsFromGame.subList(allResultsFromGame.size() - factor, allResultsFromGame.size()).stream().mapToDouble(Result::getPlayerMasterScoreBeforeGame).sum() / factor), allResultsFromGame.get(allResultsFromGame.size() - 1).getPlayerMasterScoreBeforeGame());
-            game.setHighestPoint(topScore);
-            game.setLowestPoint(bottomScore);
-            gameDao.updateGame(game);
-            for (Result result : allResultsFromGame) {
-                // A players score is calculated using top and bottom scores, and the number of attendees.
-                double score = topScore - ((result.getResult() - 1) * (topScore - bottomScore) / (numberOfAttendees - 1));
-                result.setScore(score);
-            }
-            resultDao.updateResults(allResultsFromGame);
-        } else {
-            System.err.println("Game is not complete");
         }
     }
+
+
 }

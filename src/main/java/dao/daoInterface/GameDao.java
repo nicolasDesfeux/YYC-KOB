@@ -1,8 +1,8 @@
-package daoInterface;
+package dao.daoInterface;
 
 import dto.Game;
 
-import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 
 public interface GameDao {
@@ -22,5 +22,5 @@ public interface GameDao {
 
     Game getLastCompletedGame();
 
-    Game getGameClosestTo(Date date);
+    Game getGameClosestTo(LocalDate date);
 }

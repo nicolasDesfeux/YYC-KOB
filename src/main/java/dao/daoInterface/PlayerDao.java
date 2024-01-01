@@ -1,4 +1,4 @@
-package daoInterface;
+package dao.daoInterface;
 
 import dto.Player;
 
@@ -11,9 +11,8 @@ public interface PlayerDao {
 
     Player insertPlayer(Player player);
 
-    boolean updatePlayer(Player player);
+    void updatePlayer(Player player);
 
-    boolean deletePlayer(Player player);
 
     Player getPlayerByName(String name);
 }
