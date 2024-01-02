@@ -73,11 +73,12 @@ public class Result extends DataTransferObject<Result> {
     @Override
     public String toString() {
         return "Result{" +
-                "On " + session.getDate() +
+                "On " + (session==null?"":session.getDate()) +
+                "(" + (session==null?"":session.getId()) + ")" +
                 ", " + player.getName() +
                 " finished " + result +
                 ", scoring " + KOB.DF.format(score) +
-                " points (Original master score: " + KOB.DF.format(playerMasterScoreBeforeGame!=null?playerMasterScoreBeforeGame:0) + ")}";
+                " points (Original master score: " + KOB.DF.format(playerMasterScoreBeforeGame!=null?playerMasterScoreBeforeGame:0) + ")}\n";
     }
 
     @Override

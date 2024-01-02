@@ -6,22 +6,30 @@ import dao.daoInterface.ResultDao;
 import dto.Game;
 import dto.Player;
 import dto.Result;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class ResultDaoGSheet implements ResultDao {
-
+    private static final Logger log = LogManager.getLogger(ResultDaoGSheet.class);
     private List<Result> results;
+    private final PlayerDao players;
+    private final GameDao games;
+
+    public ResultDaoGSheet(GameDao gameDao, PlayerDao playerDao) {
+        this.games = gameDao;
+        this.players = playerDao;
+    }
 
     @Override
     public List<Result> getAllResults() {
         if (results == null) {
-            PlayerDao players = new PlayerDaoGSheet();
-            GameDao games = new GameDaoGSheet();
+            log.debug("Getting all results from sheet");
             results = new ArrayList<>();
             try {
                 List<List<Object>> sheet = GSheetConnector.getResults();
@@ -31,16 +39,17 @@ public class ResultDaoGSheet implements ResultDao {
                     for (int j = 2; j < objects.size(); j++) {
                         Object object = objects.get(j);
                         if (object != null && !object.toString().isEmpty()){
-                            results.add(new Result(games.getGame(i-1), players.getPlayerByName(sheet.get(0).get(j).toString()), Double.parseDouble(object.toString())));
+                            results.add(new Result(games.getGame(sheet.size()-i), players.getPlayerByName(sheet.get(0).get(j).toString()), Double.parseDouble(object.toString())));
                         }
                     }
                 }
             } catch (IOException | GeneralSecurityException e) {
                 throw new RuntimeException(e);
             }
+            log.debug("All results now loaded");
         }
 
-        return null;
+        return results;
     }
 
     @Override
@@ -53,28 +62,15 @@ public class ResultDaoGSheet implements ResultDao {
         if (results == null) {
             this.getAllResults();
         }
-        List<Result> resultsFromGame = new ArrayList<>();
-        for (Result result : results) {
-            if (result.getSession()!=null && result.getSession().getId() == game.getId()) {
-                resultsFromGame.add(result);
-            }
-        }
-
-        return resultsFromGame;
+        return results.stream().filter(a -> a.getSession().equals(game)).collect(Collectors.toList());
     }
 
     @Override
     public List<Result> getAllResultsFromPlayer(Player p) {
+        // This needs to be improved drastically. 
         if (results == null) {
             this.getAllResults();
         }
-        List<Result> resultsFromgame = new ArrayList<>();
-        for (Result result : results) {
-            if (Objects.equals(result.getPlayer().getName(), p.getName())) {
-                resultsFromgame.add(result);
-            }
-        }
-
-        return resultsFromgame;
+        return results.stream().filter(a -> a.getPlayer().equals(p)).collect(Collectors.toList());
     }
 }

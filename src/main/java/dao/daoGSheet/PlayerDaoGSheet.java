@@ -25,7 +25,8 @@ public class PlayerDaoGSheet implements PlayerDao {
             try {
                 List<List<Object>> sheet = GSheetConnector.getResults();
                 List<Object> names = sheet.get(0);
-                for (Object name : names) {
+                for (int i = 2; i < names.size(); i++) {
+                    Object name = names.get(i);
                     players.add(new Player(name.toString()));
                 }
 

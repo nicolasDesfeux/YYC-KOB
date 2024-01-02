@@ -1,5 +1,4 @@
 package dto;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import kob.KOB;
 
 import java.math.BigDecimal;
@@ -8,9 +7,9 @@ import java.util.Objects;
 public class Player extends DataTransferObject<Player> {
     private Long id;
     private final String name;
-    @JsonIgnore
+
     private BigDecimal masterScore;
-    @JsonIgnore
+
     private boolean hasResults;
 
     public Player(long id, String name, boolean hasScore) {

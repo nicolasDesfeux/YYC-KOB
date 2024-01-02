@@ -2,6 +2,9 @@ package dao.daoGSheet;
 
 import dao.daoInterface.GameDao;
 import dto.Game;
+import kob.KOB;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -12,6 +15,7 @@ import java.util.List;
 
 public class GameDaoGSheet implements GameDao {
 
+    private static final Logger log = LogManager.getLogger(KOB.class);
     private List<Game> games;
 
     @Override
@@ -27,6 +31,8 @@ public class GameDaoGSheet implements GameDao {
     public List<Game> getAllGames() {
         if (this.games == null) {
             // First line is all players - we'll skip it but we'll use it
+
+            log.debug("Getting all games from sheet. ");
             games = new ArrayList<>();
             try {
                 // Good through each lines of the results sheets
@@ -42,12 +48,13 @@ public class GameDaoGSheet implements GameDao {
                         // Parse the string into a LocalDate object
                         LocalDate convertedLocalDate = LocalDate.parse(date, formatter);
                         // Add the game
-                        games.add(new Game(j-1, convertedLocalDate, 0, 0, false));
+                        games.add(new Game(sheet.size()-j, convertedLocalDate, 0, 0));
                     }
                 }
             } catch (IOException | GeneralSecurityException e) {
                 throw new RuntimeException(e);
             }
+            log.debug(" All games now loaded from sheet. " + games.size());
         }
 
         return this.games;

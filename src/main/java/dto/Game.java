@@ -8,13 +8,13 @@ import kob.KOB;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 public class Game extends DataTransferObject<Game> {
     private long id;
     private LocalDate date;
     private double highestPoint;
     private double lowestPoint;
-    private boolean isComplete;
 
     private static double[][] PAYOUT = {{15, 5, 0, 0},
             {17, 7, 0, 0, 15, 5, 0, 0},
@@ -27,20 +27,10 @@ public class Game extends DataTransferObject<Game> {
         this.date = date;
         this.highestPoint = highestPoint;
         this.lowestPoint = lowestPoint;
-        this.isComplete = false;
     }
 
     public Game(LocalDate date) {
         this.date = date;
-        this.isComplete = false;
-    }
-
-    public Game(long id, LocalDate date, double highestPoint, double lowestPoint, boolean isComplete) {
-        this.id = id;
-        this.date = date;
-        this.highestPoint = highestPoint;
-        this.lowestPoint = lowestPoint;
-        this.isComplete = isComplete;
     }
 
     public LocalDate getDate() {
@@ -81,6 +71,19 @@ public class Game extends DataTransferObject<Game> {
                 ", highestPoint=" + highestPoint +
                 ", lowestPoint=" + lowestPoint +
                 "}\n";
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Game game = (Game) o;
+        return id == game.id;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
     }
 
     @Override
