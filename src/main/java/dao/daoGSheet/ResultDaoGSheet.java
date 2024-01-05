@@ -6,18 +6,20 @@ import dao.daoInterface.ResultDao;
 import dto.Game;
 import dto.Player;
 import dto.Result;
+import kob.KOB;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 public class ResultDaoGSheet implements ResultDao {
     private static final Logger log = LogManager.getLogger(ResultDaoGSheet.class);
     private List<Result> results;
+    private final Map<Player, List<Result>> resultsPerPlayer = new HashMap<>();
+    private final Map<Game, List<Result>> resultsPerGames = new HashMap<>();
     private final PlayerDao players;
     private final GameDao games;
 
@@ -31,20 +33,32 @@ public class ResultDaoGSheet implements ResultDao {
         if (results == null) {
             log.debug("Getting all results from sheet");
             results = new ArrayList<>();
-            try {
-                List<List<Object>> sheet = GSheetConnector.getResults();
-                for (int i = 1; i < sheet.size(); i++) {
-                    List<Object> objects = sheet.get(i);
-
+            List<List<Object>> sheet = GSheetConnector.getResults();
+            int gameCount=0;
+            for (int i = 1; i < sheet.size(); i++) {
+                List<Object> objects = sheet.get(i);
+                // Need a minimum of results to count
+                long count = objects.stream().filter(object -> object != null && !object.toString().isEmpty()).count()-2;
+                if(count>KOB.MINIMUM_NB_PLAYERS){
                     for (int j = 2; j < objects.size(); j++) {
                         Object object = objects.get(j);
                         if (object != null && !object.toString().isEmpty()){
-                            results.add(new Result(games.getGame(sheet.size()-i), players.getPlayerByName(sheet.get(0).get(j).toString()), Double.parseDouble(object.toString())));
+                            Result e = new Result(games.getGame(gameCount), players.getPlayerByName(sheet.get(0).get(j).toString()), Double.parseDouble(object.toString()));
+                            if(e.getSession()!=null){
+                                results.add(e);
+                                List<Result> playersResult = resultsPerPlayer.getOrDefault(e.getPlayer(), new ArrayList<>());
+                                playersResult.add(e);
+                                resultsPerPlayer.put(e.getPlayer(), playersResult);
+                                List<Result> gameResults = resultsPerGames.getOrDefault(e.getSession(), new ArrayList<>());
+                                gameResults.add(e);
+                                resultsPerGames.put(e.getSession(), gameResults);
+                            }
+
                         }
                     }
+                    gameCount++;
                 }
-            } catch (IOException | GeneralSecurityException e) {
-                throw new RuntimeException(e);
+
             }
             log.debug("All results now loaded");
         }
@@ -62,15 +76,14 @@ public class ResultDaoGSheet implements ResultDao {
         if (results == null) {
             this.getAllResults();
         }
-        return results.stream().filter(a -> a.getSession().equals(game)).collect(Collectors.toList());
+        return resultsPerGames.get(game);
     }
 
     @Override
     public List<Result> getAllResultsFromPlayer(Player p) {
-        // This needs to be improved drastically. 
         if (results == null) {
             this.getAllResults();
         }
-        return results.stream().filter(a -> a.getPlayer().equals(p)).collect(Collectors.toList());
+        return resultsPerPlayer.get(p);
     }
 }

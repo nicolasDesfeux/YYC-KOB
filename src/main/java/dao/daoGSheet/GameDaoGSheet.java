@@ -6,8 +6,6 @@ import kob.KOB;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -34,25 +32,24 @@ public class GameDaoGSheet implements GameDao {
 
             log.debug("Getting all games from sheet. ");
             games = new ArrayList<>();
-            try {
-                // Good through each lines of the results sheets
-                List<List<Object>> sheet = GSheetConnector.getResults();
-                for (int j = 1; j < sheet.size(); j++) {
-                    // First column is the game "id" - we use incremental instead...
-                    // Second column is date
-                    List<Object> game = sheet.get(j);
-                    if (game.size() > 1) {
-                        String date = game.get(1).toString();
-                        // Specify the date pattern matching your Google Sheets date format
-                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-                        // Parse the string into a LocalDate object
-                        LocalDate convertedLocalDate = LocalDate.parse(date, formatter);
-                        // Add the game
-                        games.add(new Game(sheet.size()-j, convertedLocalDate, 0, 0));
-                    }
+            // Good through each lines of the results sheets
+            List<List<Object>> sheet = GSheetConnector.getResults();
+            int gameCount=0;
+            for (int j = 1; j < sheet.size(); j++) {
+                // First column is the game "id" - we use incremental instead...
+                // Second column is date
+                List<Object> game = sheet.get(j);
+                long count = game.stream().filter(object -> object != null && !object.toString().isEmpty()).count()-2;
+                if (count>KOB.MINIMUM_NB_PLAYERS) {
+                    String date = game.get(1).toString();
+                    // Specify the date pattern matching your Google Sheets date format
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    // Parse the string into a LocalDate object
+                    LocalDate convertedLocalDate = LocalDate.parse(date, formatter);
+                    // Add the game
+                    // Filter on the number of results
+                    games.add(new Game(gameCount++, convertedLocalDate, 0, 0));
                 }
-            } catch (IOException | GeneralSecurityException e) {
-                throw new RuntimeException(e);
             }
             log.debug(" All games now loaded from sheet. " + games.size());
         }

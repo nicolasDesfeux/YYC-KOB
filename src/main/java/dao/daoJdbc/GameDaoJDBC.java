@@ -2,6 +2,8 @@ package dao.daoJdbc;
 
 import dao.daoInterface.GameDao;
 import dto.Game;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.sql.*;
 import java.time.LocalDate;
@@ -9,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GameDaoJDBC implements GameDao {
+    private static final Logger log = LogManager.getLogger(GameDaoJDBC.class);
+
     @Override
     public Game getGame(long id) {
         Connection connection = DatabaseConnection.getInstance().getConnection();
@@ -19,7 +23,7 @@ public class GameDaoJDBC implements GameDao {
                 return extractGameFromResultSet(rs);
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            log.error("Unable to retrieve the game for id: "+id, ex);
         }
         return null;
     }
@@ -36,7 +40,7 @@ public class GameDaoJDBC implements GameDao {
                 results.add(extractGameFromResultSet(rs));
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            log.error("Unable to retrieve the games", ex);
         }
         return results;
     }
@@ -53,7 +57,7 @@ public class GameDaoJDBC implements GameDao {
                 results.add(extractGameFromResultSet(rs));
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            log.error("Unable to retrieve the open games", ex);
         }
         return results;
     }
@@ -70,7 +74,8 @@ public class GameDaoJDBC implements GameDao {
                 results.add(extractGameFromResultSet(rs));
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+
+            log.error("Unable to retrieve the completed games", ex);
         }
         return results;
     }
@@ -95,7 +100,8 @@ public class GameDaoJDBC implements GameDao {
                 return game;
             }
             } catch (SQLException ex) {
-                ex.printStackTrace();
+
+            log.error("Unable to insert new game: " + game, ex);
             }
         return null;
     }
@@ -114,7 +120,7 @@ public class GameDaoJDBC implements GameDao {
                 return true;
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            log.error("Unable to update the game: "+game, ex);
         }
         return false;
     }
@@ -129,7 +135,7 @@ public class GameDaoJDBC implements GameDao {
                 return true;
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            log.error("Unable to delete the game " + game, ex);
         }
         return false;
     }
@@ -144,7 +150,8 @@ public class GameDaoJDBC implements GameDao {
                 return extractGameFromResultSet(rs);
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+
+            log.error("Unable to retrieve the last complete game", ex);
         }
         return null;
     }
@@ -161,7 +168,8 @@ public class GameDaoJDBC implements GameDao {
                 return extractGameFromResultSet(rs);
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+
+            log.error("Unable to retrieve the game closest to: "+asOfDate, ex);
         }
         return null;
     }

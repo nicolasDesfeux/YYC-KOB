@@ -3,8 +3,6 @@ package dao.daoGSheet;
 import dao.daoInterface.PlayerDao;
 import dto.Player;
 
-import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -22,17 +20,13 @@ public class PlayerDaoGSheet implements PlayerDao {
     public List<Player> getAllPlayers() {
         if(players==null){
             players = new ArrayList<>();
-            try {
-                List<List<Object>> sheet = GSheetConnector.getResults();
-                List<Object> names = sheet.get(0);
-                for (int i = 2; i < names.size(); i++) {
-                    Object name = names.get(i);
-                    players.add(new Player(name.toString()));
-                }
-
-            } catch (IOException | GeneralSecurityException e) {
-                throw new RuntimeException(e);
+            List<List<Object>> sheet = GSheetConnector.getResults();
+            List<Object> names = sheet.get(0);
+            for (int i = 2; i < names.size(); i++) {
+                Object name = names.get(i);
+                players.add(new Player(name.toString()));
             }
+
         }
         return players;
     }

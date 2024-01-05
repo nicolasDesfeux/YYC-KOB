@@ -65,7 +65,7 @@ public class DatabaseConnection {
         }
         return instance;
     }
-
+    /*
     /**
      * This method uses the results from a game to calculate each player score for the provided game.
      *
