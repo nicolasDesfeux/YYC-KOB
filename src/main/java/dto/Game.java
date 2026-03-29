@@ -1,16 +1,13 @@
 package dto;
 
-
 import dao.daoInterface.ResultDao;
-import dao.daoJdbc.ResultDaoJDBC;
-import kob.KOB;
 
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-public class Game extends DataTransferObject<Game> {
+public class Game {
     private long id;
     private LocalDate date;
     private double highestPoint;
@@ -61,8 +58,6 @@ public class Game extends DataTransferObject<Game> {
         this.lowestPoint = lowestPoint;
     }
 
-
-
     @Override
     public String toString() {
         return "Game{" +
@@ -86,19 +81,13 @@ public class Game extends DataTransferObject<Game> {
         return Objects.hash(id);
     }
 
-    @Override
-    public Game save() {
-        return KOB.getInstance().getGameDao().insertGame(this);
-    }
-
-    public String getXmlExpanded() {
+    public String getXmlExpanded(ResultDao resultDao) {
         StringBuilder game = new StringBuilder("<Game>");
         game.append("<Id>").append(this.getId()).append("</Id>");
         game.append("<Date>").append(this.getDate()).append("</Date>");
         game.append("<TopAvailableScore>").append(this.getHighestPoint()).append("</TopAvailableScore>");
         game.append("<BottomAvailableScore>").append(this.getLowestPoint()).append("</BottomAvailableScore>");
         game.append("<Participants>");
-        ResultDao resultDao = new ResultDaoJDBC();
         List<Result> allResultsFromGame = resultDao.getAllResultsFromGame(this);
         allResultsFromGame.sort(Comparator.comparingDouble(Result::getResult));
         for (Result result : allResultsFromGame) {

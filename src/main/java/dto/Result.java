@@ -4,13 +4,15 @@ import kob.KOB;
 
 import java.math.BigDecimal;
 
-public class Result extends DataTransferObject<Result> {
+public class Result {
     private long id;
     private final Game session;
     private Player player;
     private final double result;
     private double score;
     private BigDecimal playerMasterScoreBeforeGame;
+    private BigDecimal playerMasterScoreAfterGame;
+    private boolean debutGame;
 
     public Result(long id, Game session, Player player, double result, double score, BigDecimal playerMasterScoreBeforeGame) {
         this.id = id;
@@ -70,6 +72,22 @@ public class Result extends DataTransferObject<Result> {
         this.playerMasterScoreBeforeGame = playerMasterScoreBeforeGame;
     }
 
+    public boolean isDebutGame() {
+        return debutGame;
+    }
+
+    public void setDebutGame(boolean debutGame) {
+        this.debutGame = debutGame;
+    }
+
+    public BigDecimal getPlayerMasterScoreAfterGame() {
+        return playerMasterScoreAfterGame;
+    }
+
+    public void setPlayerMasterScoreAfterGame(BigDecimal playerMasterScoreAfterGame) {
+        this.playerMasterScoreAfterGame = playerMasterScoreAfterGame;
+    }
+
     @Override
     public String toString() {
         return "Result{" +
@@ -81,8 +99,5 @@ public class Result extends DataTransferObject<Result> {
                 " points (Original master score: " + KOB.DF.format(playerMasterScoreBeforeGame!=null?playerMasterScoreBeforeGame:0) + ")}\n";
     }
 
-    @Override
-    public Result save() {
-        return KOB.getInstance().getResultDao().insertResult(this);
-    }
+
 }

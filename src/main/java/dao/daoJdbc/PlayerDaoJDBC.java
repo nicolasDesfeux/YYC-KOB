@@ -100,4 +100,6 @@ public class PlayerDaoJDBC implements PlayerDao {
     private Player extractPlayerFromResultSet(ResultSet rs) throws SQLException {
         return new Player(rs.getLong("id"), rs.getString("name"), rs.getBoolean("hasScore"));
     }
+
+
 }

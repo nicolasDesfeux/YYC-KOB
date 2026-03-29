@@ -13,6 +13,5 @@ public interface PlayerDao {
 
     void updatePlayer(Player player);
 
-
     Player getPlayerByName(String name);
 }

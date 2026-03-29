@@ -1,0 +1,63 @@
+ARCHITECTURAL REVIEW — YYC-KOB (non-JDBC issues)
+=================================================
+
+1. KOB IS A GOD CLASS
+   KOB.java owns DAO references, master score calculation, scoring algorithm,
+   participation filtering, and orchestration. getPlayersRankingAtGame() is 60+
+   lines of dense business logic in what should be a thin orchestration class.
+   setPlayerMasterScoreAtGame() is also buried here. These should be extracted
+   into dedicated service/calculator classes, similar to what was done with
+   StatisticsComputer.
+
+2. O(N²) SCORE RECALCULATION
+   getMasterScoreEvolution() calls getPlayersRankingAtGame(game) for every game.
+   Each call reprocesses ALL games from the beginning — resetting every player to
+   INITIAL_SCORE and replaying history. For N games this is O(N²) game iterations
+   and O(N²) result fetches. This will become painful as the game count grows.
+   It should be replaced with a single forward pass.
+
+3. GAME DTO HAS A DAO DEPENDENCY
+   Game.getXmlExpanded() instantiates new ResultDaoJDBC() directly. A DTO should
+   never reach into the data layer. This creates a hard dependency on the JDBC
+   implementation (not the interface), meaning the GSheet path can never use
+   getXmlExpanded(). The method should either be removed or accept a ResultDao
+   parameter.
+
+4. GSHEET DAOS SILENTLY RETURN NULL FOR UNSUPPORTED OPERATIONS
+   PlayerDaoGSheet.getPlayer(), GameDaoGSheet.insertGame(), etc. return null
+   instead of throwing UnsupportedOperationException. This makes the
+   GSheet-vs-JDBC difference invisible at runtime until something NPEs
+   downstream. The DAO interfaces also contain write methods (insertGame,
+   updateGame, deleteGame) that are fundamentally meaningless in a read-only
+   Google Sheets context — the interfaces are over-specified for the GSheet
+   use case.
+
+5. LIMIT_TO_A_YEAR FLAG IS DEAD AND CONTRADICTORY
+   KOB.LIMIT_TO_A_YEAR is hardcoded to false in source, but persistRanking()
+   filters players by the past year unconditionally, and setPlayerMasterScoreAtGame()
+   applies the minusYears(1) filter only when the flag is true. The flag appears
+   dead but the filtering logic still runs. It should either be removed entirely
+   or moved to config.properties.
+
+6. STATISTICSCOMPUTER RE-FETCHES RESULTS PER GAME
+   StatisticsComputer is constructed with the full game list but calls
+   resultDao.getAllResultsFromGame(game) in a loop. For the GSheet implementation
+   every call scans all cached data. Since the full dataset is already in memory
+   at that point, pre-loading results before constructing StatisticsComputer would
+   make the data flow explicit and avoid repeated scanning.
+
+7. DataTransferObject ABSTRACT BASE IS VESTIGIAL
+   Game, Player, and Result extend DataTransferObject<T>, which declares a single
+   abstract save() method. None of the three implement it in any meaningful way and
+   it is unused in the current flow. This was likely from an early design that never
+   materialized. The inheritance adds noise with no behavioral contract and should
+   be removed.
+
+
+PRIORITY ORDER
+--------------
+  #2  — Performance (O(N²) recalculation grows with every game added)
+  #1  — Maintainability (God class makes future changes risky)
+  #4  — Correctness/safety (silent nulls hide unsupported operations)
+  #5  — Dead code (contradictory flag creates confusion)
+  #3, #6, #7 — Lower urgency, clean up when touching those areas

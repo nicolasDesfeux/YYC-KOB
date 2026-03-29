@@ -9,7 +9,12 @@ import java.util.Optional;
 
 public class PlayerDaoGSheet implements PlayerDao {
 
-    List<Player> players;
+    private final GSheetConnector connector;
+    private List<Player> players;
+
+    public PlayerDaoGSheet(GSheetConnector connector) {
+        this.connector = connector;
+    }
 
     @Override
     public Player getPlayer(long id) {
@@ -18,15 +23,13 @@ public class PlayerDaoGSheet implements PlayerDao {
 
     @Override
     public List<Player> getAllPlayers() {
-        if(players==null){
+        if (players == null) {
             players = new ArrayList<>();
-            List<List<Object>> sheet = GSheetConnector.getResults();
+            List<List<Object>> sheet = connector.getResults();
             List<Object> names = sheet.get(0);
             for (int i = 2; i < names.size(); i++) {
-                Object name = names.get(i);
-                players.add(new Player(name.toString()));
+                players.add(new Player(names.get(i).toString()));
             }
-
         }
         return players;
     }
@@ -39,7 +42,6 @@ public class PlayerDaoGSheet implements PlayerDao {
     @Override
     public void updatePlayer(Player player) {
     }
-
 
     @Override
     public Player getPlayerByName(String name) {

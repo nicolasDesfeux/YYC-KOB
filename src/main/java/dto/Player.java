@@ -4,7 +4,7 @@ import kob.KOB;
 import java.math.BigDecimal;
 import java.util.Objects;
 
-public class Player extends DataTransferObject<Player> {
+public class Player {
     private Long id;
     private final String name;
 
@@ -81,14 +81,5 @@ public class Player extends DataTransferObject<Player> {
         return Objects.hash(id, name);
     }
 
-    @Override
-    public Player save() {
-        if (this.id == null) {
-            return KOB.getInstance().getPlayerDao().insertPlayer(this);
-        } else {
-            KOB.getInstance().getPlayerDao().updatePlayer(this);
-            return this;
-        }
 
-    }
 }

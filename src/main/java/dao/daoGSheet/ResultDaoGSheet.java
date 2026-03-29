@@ -20,10 +20,12 @@ public class ResultDaoGSheet implements ResultDao {
     private List<Result> results;
     private final Map<Player, List<Result>> resultsPerPlayer = new HashMap<>();
     private final Map<Game, List<Result>> resultsPerGames = new HashMap<>();
+    private final GSheetConnector connector;
     private final PlayerDao players;
     private final GameDao games;
 
-    public ResultDaoGSheet(GameDao gameDao, PlayerDao playerDao) {
+    public ResultDaoGSheet(GSheetConnector connector, GameDao gameDao, PlayerDao playerDao) {
+        this.connector = connector;
         this.games = gameDao;
         this.players = playerDao;
     }
@@ -33,36 +35,41 @@ public class ResultDaoGSheet implements ResultDao {
         if (results == null) {
             log.debug("Getting all results from sheet");
             results = new ArrayList<>();
-            List<List<Object>> sheet = GSheetConnector.getResults();
-            int gameCount=0;
-            for (int i = 1; i < sheet.size(); i++) {
+            // Use the authoritative game list from GameDao so IDs are guaranteed to match.
+            List<Game> allGames = games.getAllGames();
+            List<List<Object>> sheet = connector.getResults();
+            int gameIndex = 0;
+            for (int i = 1; i < sheet.size() && gameIndex < allGames.size(); i++) {
                 List<Object> objects = sheet.get(i);
-                // Need a minimum of results to count
-                long count = objects.stream().filter(object -> object != null && !object.toString().isEmpty()).count()-2;
-                if(count>KOB.MINIMUM_NB_PLAYERS){
-                    for (int j = 2; j < objects.size(); j++) {
-                        Object object = objects.get(j);
-                        if (object != null && !object.toString().isEmpty()){
-                            Result e = new Result(games.getGame(gameCount), players.getPlayerByName(sheet.get(0).get(j).toString()), Double.parseDouble(object.toString()));
-                            if(e.getSession()!=null){
-                                results.add(e);
-                                List<Result> playersResult = resultsPerPlayer.getOrDefault(e.getPlayer(), new ArrayList<>());
-                                playersResult.add(e);
-                                resultsPerPlayer.put(e.getPlayer(), playersResult);
-                                List<Result> gameResults = resultsPerGames.getOrDefault(e.getSession(), new ArrayList<>());
-                                gameResults.add(e);
-                                resultsPerGames.put(e.getSession(), gameResults);
+                long count = objects.stream().filter(object -> object != null && !object.toString().isEmpty()).count() - 2;
+                if (count > KOB.MINIMUM_NB_PLAYERS) {
+                    Game currentGame = allGames.get(gameIndex++);
+for (int j = 2; j < sheet.get(0).size(); j++) {
+                        Object object = j < objects.size() ? objects.get(j) : null;
+                        if (object != null && !object.toString().isEmpty()) {
+                            String playerName = sheet.get(0).get(j).toString();
+                            Player player = players.getPlayerByName(playerName);
+                            if (player == null) {
+                                log.warn("Game {}: player '{}' (column {}) not found in player list — skipping result", currentGame.getId(), playerName, j);
+                                continue;
                             }
-
+                            double score;
+                            try {
+                                score = Double.parseDouble(object.toString());
+                            } catch (NumberFormatException ex) {
+                                log.warn("Game {}: unparseable result '{}' for player '{}' — skipping", currentGame.getId(), object, playerName);
+                                continue;
+                            }
+                            Result e = new Result(currentGame, player, score);
+                            results.add(e);
+                            resultsPerPlayer.computeIfAbsent(e.getPlayer(), k -> new ArrayList<>()).add(e);
+                            resultsPerGames.computeIfAbsent(e.getSession(), k -> new ArrayList<>()).add(e);
                         }
                     }
-                    gameCount++;
                 }
-
             }
             log.debug("All results now loaded");
         }
-
         return results;
     }
 
