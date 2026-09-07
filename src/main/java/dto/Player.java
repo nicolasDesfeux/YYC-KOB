@@ -16,12 +16,12 @@ public class Player {
         this.id = id;
         this.name = name;
         this.hasResults = hasScore;
-        this.masterScore = BigDecimal.valueOf(KOB.INITIAL_SCORE);
+        this.masterScore = BigDecimal.valueOf(KOB.config().initialScore);
     }
 
     public Player(String name) {
         this.name = name;
-        this.masterScore = BigDecimal.valueOf(KOB.INITIAL_SCORE);
+        this.masterScore = BigDecimal.valueOf(KOB.config().initialScore);
         this.hasResults = false;
     }
 
@@ -31,6 +31,27 @@ public class Player {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    /**
+     * Canonical form used when matching a name across sheets.
+     *
+     * Player identity lives in spreadsheet column headers typed by hand, so the
+     * same person can appear as "Chris Mitchell", "chris mitchell", or with a
+     * stray trailing space. Matching on this form makes lookups tolerant of
+     * those differences while the original spelling is what gets displayed.
+     *
+     * @return trimmed, lower-cased, with internal whitespace runs collapsed;
+     *         empty string for a null input
+     */
+    public static String normaliseName(String raw) {
+        if (raw == null) return "";
+        return raw.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** This player's name in {@link #normaliseName canonical} form. */
+    public String getNormalisedName() {
+        return normaliseName(name);
     }
 
     public String getName() {

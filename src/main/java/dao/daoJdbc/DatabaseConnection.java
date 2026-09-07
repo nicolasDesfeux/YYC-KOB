@@ -108,10 +108,10 @@ public class DatabaseConnection {
 
     private static double getPlayerResultAverageAtDate(LocalDate date, Player player) {
         List<Result> allResultsFromPlayer = resultDao.getAllResultsFromPlayer(player);
-        if (KOB.LIMIT_TO_A_YEAR) {
+        if (KOB.config().limitToAYear) {
             allResultsFromPlayer = allResultsFromPlayer.stream().filter(result -> result.getSession().getDate().isAfter(LocalDate.now().minusYears(1))).collect(Collectors.toList());
         }
-        allResultsFromPlayer.add(new Result(-1, 0, KOB.INITIAL_SCORE, LocalDate.now(), 0));
+        allResultsFromPlayer.add(new Result(-1, 0, KOB.config().initialScore, LocalDate.now(), 0));
         return allResultsFromPlayer.stream().filter(result -> result.getSession().getDate().isBefore(date)).mapToDouble(Result::getScore).average().getAsDouble();
     }*/
 }

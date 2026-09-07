@@ -29,12 +29,15 @@ public class KOB {
 
     private static final Logger log = LogManager.getLogger(KOB.class);
 
-    // TODO Move those settings to properties database.
-    public final static int INITIAL_SCORE = 50;
-    public static final int MINIMUM_NB_PLAYERS = 8;
-    public static final int SCORE_RANGE_MARGIN = 10; // Ensures top/bottom available scores exceed the highest/lowest player score on the day
-    public static final int RECENT_WINDOW_SIZE = 8;  // Number of games per scoring bucket (2 games/week × 4 weeks)
-    public static final int QUARTILE_DIVISOR = 4;    // Divisor for top/bottom 25% calculation
+    /**
+     * Tunable scoring parameters, loaded from config.properties at startup.
+     * Defaults apply until the first KOB instance is constructed, so DAOs that
+     * read this lazily always see a usable configuration.
+     */
+    private static volatile KobConfig config = KobConfig.defaults();
+
+    /** The active scoring configuration. */
+    public static KobConfig config() { return config; }
     private final ResultDao resultDao;
     private final PlayerDao playerDao;
     private final GameDao gameDao;
@@ -44,8 +47,7 @@ public class KOB {
     private String debugPlayer;   // optional: dump bucket breakdown for one player
     private String htmlOutputPath;
     public final static DecimalFormat DF = new DecimalFormat("0.0");
-    public final static boolean LIMIT_TO_A_YEAR = true;
-
+    
     private static volatile KOB singleInstance = null;
     private final Map<Player, List<String>> masterScoresEvolution = new HashMap<>();
 
@@ -67,6 +69,8 @@ public class KOB {
 
             daoType = properties.getProperty("dao.type");
             htmlOutputPath = properties.getProperty("html.output.path", "dashboard.html");
+            config = KobConfig.fromProperties(properties);
+            log.info("Scoring configuration: {}", config);
 
         } catch (IOException e) {
             log.error("Could not load config.properties, cannot continue", e);
@@ -218,7 +222,7 @@ public class KOB {
             if (results == null || results.isEmpty()) continue;
 
             int n = results.size();
-            int q = n / QUARTILE_DIVISOR;
+            int q = n / config.quartileDivisor;
             List<Result> byFinish = results.stream()
                     .sorted(Comparator.comparingDouble(Result::getResult))
                     .collect(Collectors.toList());
@@ -304,7 +308,7 @@ public class KOB {
             Result gameResult = allPlayerResults.stream()
                     .filter(r -> r.getSession().equals(game)).findFirst().orElse(null);
 
-            List<Result> filtered = LIMIT_TO_A_YEAR
+            List<Result> filtered = config.limitToAYear
                     ? allPlayerResults.stream()
                         .filter(r -> r.getSession().getDate().isAfter(game.getDate().minusYears(1)))
                         .collect(Collectors.toList())
@@ -312,17 +316,17 @@ public class KOB {
 
             List<Result> recent = filtered.stream()
                     .filter(r -> r.getScore() != 0
-                            && (game.getId() - r.getSession().getId()) <= RECENT_WINDOW_SIZE)
+                            && (game.getId() - r.getSession().getId()) <= config.recentWindowSize)
                     .sorted(Comparator.comparing(r -> r.getSession().getId()))
                     .collect(Collectors.toList());
             List<Result> mid = filtered.stream()
                     .filter(r -> r.getScore() != 0
-                            && (game.getId() - r.getSession().getId()) > RECENT_WINDOW_SIZE
-                            && (game.getId() - r.getSession().getId()) < RECENT_WINDOW_SIZE * 2)
+                            && (game.getId() - r.getSession().getId()) > config.recentWindowSize
+                            && (game.getId() - r.getSession().getId()) < config.recentWindowSize * 2)
                     .collect(Collectors.toList());
             List<Result> old = filtered.stream()
                     .filter(r -> r.getScore() != 0
-                            && (game.getId() - r.getSession().getId()) >= RECENT_WINDOW_SIZE * 2)
+                            && (game.getId() - r.getSession().getId()) >= config.recentWindowSize * 2)
                     .collect(Collectors.toList());
 
             OptionalDouble midAvg = mid.stream().mapToDouble(Result::getScore).average();
@@ -331,7 +335,7 @@ public class KOB {
             double masterScore = nbResult > 0
                     ? (recent.stream().mapToDouble(Result::getScore).sum()
                         + midAvg.orElse(0) + oldAvg.orElse(0)) / nbResult
-                    : INITIAL_SCORE;
+                    : config.initialScore;
 
             String participation = gameResult != null
                     ? String.format("pos=%s  game_score=%s  pre=%s",
@@ -345,17 +349,17 @@ public class KOB {
                     DF.format(game.getHighestPoint()), DF.format(game.getLowestPoint()));
             System.out.printf("  1-year cutoff: %s%n", game.getDate().minusYears(1));
             System.out.printf("  Recent  (gap 0-%d, %d entries): %s%n",
-                    RECENT_WINDOW_SIZE, recent.size(),
+                    config.recentWindowSize, recent.size(),
                     recent.stream().map(r -> String.format("G%d[%s]=%s", r.getSession().getId(), r.getSession().getDate(), DF.format(r.getScore())))
                             .collect(Collectors.joining(", ")));
             System.out.printf("  Mid avg (gap %d-%d, %d entries): %s%s%n",
-                    RECENT_WINDOW_SIZE + 1, RECENT_WINDOW_SIZE * 2 - 1, mid.size(),
+                    config.recentWindowSize + 1, config.recentWindowSize * 2 - 1, mid.size(),
                     midAvg.isPresent() ? DF.format(midAvg.getAsDouble()) : "—",
                     mid.isEmpty() ? "" : " ← " + mid.stream()
                             .map(r -> String.format("G%d[%s]=%s", r.getSession().getId(), r.getSession().getDate(), DF.format(r.getScore())))
                             .collect(Collectors.joining(", ")));
             System.out.printf("  Old avg (gap >%d,  %d entries): %s%s%n",
-                    RECENT_WINDOW_SIZE * 2, old.size(),
+                    config.recentWindowSize * 2, old.size(),
                     oldAvg.isPresent() ? DF.format(oldAvg.getAsDouble()) : "—",
                     old.isEmpty() ? "" : " ← " + old.stream()
                             .map(r -> String.format("G%d[%s]=%s", r.getSession().getId(), r.getSession().getDate(), DF.format(r.getScore())))
@@ -365,23 +369,23 @@ public class KOB {
 
         // Final snapshot: same calculation as the live ranking uses (referenceDate cutoff)
         System.out.printf("%nAs of %s (1-year cutoff: %s)%n", referenceDate, referenceDate.minusYears(1));
-        List<Result> filteredToday = LIMIT_TO_A_YEAR
+        List<Result> filteredToday = config.limitToAYear
                 ? allPlayerResults.stream()
                     .filter(r -> r.getSession().getDate().isAfter(referenceDate.minusYears(1)))
                     .collect(Collectors.toList())
                 : allPlayerResults;
         List<Result> recentToday = filteredToday.stream()
-                .filter(r -> r.getScore() != 0 && (lastGame.getId() - r.getSession().getId()) <= RECENT_WINDOW_SIZE)
+                .filter(r -> r.getScore() != 0 && (lastGame.getId() - r.getSession().getId()) <= config.recentWindowSize)
                 .sorted(Comparator.comparing(r -> r.getSession().getId()))
                 .collect(Collectors.toList());
         List<Result> midToday = filteredToday.stream()
                 .filter(r -> r.getScore() != 0
-                        && (lastGame.getId() - r.getSession().getId()) > RECENT_WINDOW_SIZE
-                        && (lastGame.getId() - r.getSession().getId()) < RECENT_WINDOW_SIZE * 2)
+                        && (lastGame.getId() - r.getSession().getId()) > config.recentWindowSize
+                        && (lastGame.getId() - r.getSession().getId()) < config.recentWindowSize * 2)
                 .collect(Collectors.toList());
         List<Result> oldToday = filteredToday.stream()
                 .filter(r -> r.getScore() != 0
-                        && (lastGame.getId() - r.getSession().getId()) >= RECENT_WINDOW_SIZE * 2)
+                        && (lastGame.getId() - r.getSession().getId()) >= config.recentWindowSize * 2)
                 .collect(Collectors.toList());
         OptionalDouble midAvgToday = midToday.stream().mapToDouble(Result::getScore).average();
         OptionalDouble oldAvgToday = oldToday.stream().mapToDouble(Result::getScore).average();
@@ -389,19 +393,19 @@ public class KOB {
         double masterToday = nbToday > 0
                 ? (recentToday.stream().mapToDouble(Result::getScore).sum()
                     + midAvgToday.orElse(0) + oldAvgToday.orElse(0)) / nbToday
-                : INITIAL_SCORE;
+                : config.initialScore;
         System.out.printf("  Recent  (gap 0-%d, %d entries): %s%n",
-                RECENT_WINDOW_SIZE, recentToday.size(),
+                config.recentWindowSize, recentToday.size(),
                 recentToday.stream().map(r -> String.format("G%d[%s]=%s", r.getSession().getId(), r.getSession().getDate(), DF.format(r.getScore())))
                         .collect(Collectors.joining(", ")));
         System.out.printf("  Mid avg (gap %d-%d, %d entries): %s%s%n",
-                RECENT_WINDOW_SIZE + 1, RECENT_WINDOW_SIZE * 2 - 1, midToday.size(),
+                config.recentWindowSize + 1, config.recentWindowSize * 2 - 1, midToday.size(),
                 midAvgToday.isPresent() ? DF.format(midAvgToday.getAsDouble()) : "—",
                 midToday.isEmpty() ? "" : " ← " + midToday.stream()
                         .map(r -> String.format("G%d[%s]=%s", r.getSession().getId(), r.getSession().getDate(), DF.format(r.getScore())))
                         .collect(Collectors.joining(", ")));
         System.out.printf("  Old avg (gap >%d,  %d entries): %s%s%n",
-                RECENT_WINDOW_SIZE * 2, oldToday.size(),
+                config.recentWindowSize * 2, oldToday.size(),
                 oldAvgToday.isPresent() ? DF.format(oldAvgToday.getAsDouble()) : "—",
                 oldToday.isEmpty() ? "" : " ← " + oldToday.stream()
                         .map(r -> String.format("G%d[%s]=%s", r.getSession().getId(), r.getSession().getDate(), DF.format(r.getScore())))
@@ -555,7 +559,7 @@ public class KOB {
         List<Player> allPlayers = playerDao.getAllPlayers();
         for (Player player : allPlayers) {
             player.setHasResults(false);
-            player.setMasterScore(BigDecimal.valueOf(INITIAL_SCORE));
+            player.setMasterScore(BigDecimal.valueOf(config.initialScore));
         }
 
         // Look up the target game first so we know when to snapshot
@@ -578,15 +582,15 @@ public class KOB {
                     .sorted(Comparator.comparing(Player::getMasterScore).reversed())
                     .collect(Collectors.toList());
 
-            int sizeForMargin = results.size() / QUARTILE_DIVISOR;
+            int sizeForMargin = results.size() / config.quartileDivisor;
             OptionalDouble avg = gamePlayers.subList(0, sizeForMargin).stream()
                     .mapToDouble(p -> p.getMasterScore().doubleValue()).average();
-            double averageTop = avg.isPresent() ? avg.getAsDouble() + SCORE_RANGE_MARGIN : 0;
+            double averageTop = avg.isPresent() ? avg.getAsDouble() + config.scoreRangeMargin : 0;
             if (averageTop < gamePlayers.get(0).getMasterScore().doubleValue())
                 averageTop = gamePlayers.get(0).getMasterScore().doubleValue();
             avg = gamePlayers.subList(gamePlayers.size() - sizeForMargin, gamePlayers.size()).stream()
                     .mapToDouble(p -> p.getMasterScore().doubleValue()).average();
-            double averageBottom = avg.isPresent() ? avg.getAsDouble() - SCORE_RANGE_MARGIN : 0;
+            double averageBottom = avg.isPresent() ? avg.getAsDouble() - config.scoreRangeMargin : 0;
             if (averageBottom > gamePlayers.get(gamePlayers.size() - 1).getMasterScore().doubleValue())
                 averageBottom = gamePlayers.get(gamePlayers.size() - 1).getMasterScore().doubleValue();
             game.setHighestPoint(averageTop);
@@ -618,8 +622,8 @@ public class KOB {
         long ageInGames = lastGame.getId() - gameId;
         String bucket;
         if (!withinYear)                               bucket = "not used (>1 year old)";
-        else if (ageInGames <= RECENT_WINDOW_SIZE)     bucket = "recent (counted individually)";
-        else if (ageInGames < RECENT_WINDOW_SIZE * 2) bucket = "mid average";
+        else if (ageInGames <= config.recentWindowSize)     bucket = "recent (counted individually)";
+        else if (ageInGames < config.recentWindowSize * 2) bucket = "mid average";
         else                                           bucket = "old average";
 
         Map<Player, Result> gameResultMap = new HashMap<>();
@@ -655,7 +659,7 @@ public class KOB {
             String position      = r != null ? DF.format(r.getResult()) : "-";
             String preGameScore  = r != null && r.getPlayerMasterScoreBeforeGame() != null ? DF.format(r.getPlayerMasterScoreBeforeGame()) : "-";
             String gameScore     = r != null ? (withinYear ? DF.format(r.getScore()) : "not used") : "-";
-            String postScore     = DF.format(snapshotAfterGame.getOrDefault(p, BigDecimal.valueOf(INITIAL_SCORE)));
+            String postScore     = DF.format(snapshotAfterGame.getOrDefault(p, BigDecimal.valueOf(config.initialScore)));
             System.out.printf("%-3d %-25s %10s %14s %14s %16s%n",
                     i + 1, p.getName(), position, preGameScore, gameScore, postScore);
         }
@@ -671,7 +675,7 @@ public class KOB {
         List<Player> allPlayers = playerDao.getAllPlayers();
         for (Player player : allPlayers) {
             player.setHasResults(false);
-            player.setMasterScore(BigDecimal.valueOf(INITIAL_SCORE));
+            player.setMasterScore(BigDecimal.valueOf(config.initialScore));
         }
 
         Map<Player, List<Result>> playerResultHistory = new HashMap<>();
@@ -683,28 +687,16 @@ public class KOB {
             if (!results.isEmpty()) {
                 List<Player> gamePlayers = results.stream()
                         .map(Result::getPlayer)
-                        .sorted(Comparator.comparing(Player::getMasterScore).reversed())
                         .collect(Collectors.toList());
 
-                // Calculate score range for this game
-                int sizeForMargin = results.size() / QUARTILE_DIVISOR;
-                OptionalDouble avg = gamePlayers.subList(0, sizeForMargin).stream()
-                        .mapToDouble(p -> p.getMasterScore().doubleValue()).average();
-                double averageTop = avg.isPresent() ? avg.getAsDouble() + SCORE_RANGE_MARGIN : 0;
-                if (averageTop < gamePlayers.get(0).getMasterScore().doubleValue())
-                    averageTop = gamePlayers.get(0).getMasterScore().doubleValue();
-                avg = gamePlayers.subList(gamePlayers.size() - sizeForMargin, gamePlayers.size()).stream()
-                        .mapToDouble(p -> p.getMasterScore().doubleValue()).average();
-                double averageBottom = avg.isPresent() ? avg.getAsDouble() - SCORE_RANGE_MARGIN: 0;
-                if (averageBottom > gamePlayers.get(gamePlayers.size() - 1).getMasterScore().doubleValue())
-                    averageBottom = gamePlayers.get(gamePlayers.size() - 1).getMasterScore().doubleValue();
-                game.setHighestPoint(averageTop);
-                game.setLowestPoint(averageBottom);
+                ScoringEngine.ScoreRange range = ScoringEngine.computeScoreRange(
+                        ScoringEngine.descendingScores(gamePlayers), config);
+                game.setHighestPoint(range.highest());
+                game.setLowestPoint(range.lowest());
 
                 // Assign scores and snapshot each player's pre-game master score
                 for (Result result : results) {
-                    double score = game.getHighestPoint() - ((result.getResult() - 1)
-                            * (game.getHighestPoint() - game.getLowestPoint()) / (results.size() - 1));
+                    double score = ScoringEngine.gameScore(result.getResult(), range, results.size());
                     result.setScore(score);
                     result.setDebutGame(!result.getPlayer().isHasResults());
                     result.setPlayerMasterScoreBeforeGame(result.getPlayer().getMasterScore());
@@ -774,48 +766,17 @@ public class KOB {
                 .collect(Collectors.toList());
     }
 
-    private void updateMasterScore(Game game, java.time.LocalDate referenceDate, Player player, List<Result> allPlayerResults) {
-        if (allPlayerResults.isEmpty()) {
-            player.setHasResults(false);
-            player.setMasterScore(BigDecimal.valueOf(INITIAL_SCORE));
-            return;
-        }
-
-        List<Result> filtered = allPlayerResults;
-        if (LIMIT_TO_A_YEAR) {
-            filtered = allPlayerResults.stream()
-                    .filter(result -> result.getSession().getDate().isAfter(referenceDate.minusYears(1)))
-                    .collect(Collectors.toList());
-        }
-
-        // Individual results from the last 2 weeks counted as individual, one more
-        // result is the average from game 9 to 16, and one more result is the average
-        // from game 17 to up to a year.
-        List<Result> lastTwoWeeks = filtered.stream()
-                .filter(result -> result.getScore() != 0 && (game.getId() - result.getSession().getId()) <= RECENT_WINDOW_SIZE)
-                .collect(Collectors.toList());
-
-        OptionalDouble previousTwoWeeks = filtered.stream()
-                .filter(result -> result.getScore() != 0
-                        && (game.getId() - result.getSession().getId()) > RECENT_WINDOW_SIZE
-                        && (game.getId() - result.getSession().getId()) < RECENT_WINDOW_SIZE * 2)
-                .mapToDouble(Result::getScore).average();
-        OptionalDouble rest = filtered.stream()
-                .filter(result -> result.getScore() != 0
-                        && (game.getId() - result.getSession().getId()) >= RECENT_WINDOW_SIZE * 2)
-                .mapToDouble(Result::getScore).average();
-
-        long nbResult = lastTwoWeeks.size() + (previousTwoWeeks.isPresent() ? 1 : 0) + (rest.isPresent() ? 1 : 0);
-
-        if (nbResult > 0) {
-            double masterScore = (lastTwoWeeks.stream().mapToDouble(Result::getScore).sum()
-                    + (previousTwoWeeks.isPresent() ? previousTwoWeeks.getAsDouble() : 0)
-                    + (rest.isPresent() ? rest.getAsDouble() : 0)) / nbResult;
-            player.setMasterScore(BigDecimal.valueOf(masterScore));
-            player.setHasResults(true);
-        } else {
-            player.setHasResults(false);
-            player.setMasterScore(BigDecimal.valueOf(INITIAL_SCORE));
-        }
+    /**
+     * Recomputes one player's master score as of {@code game}, using
+     * {@code referenceDate} for the one-year window. The arithmetic lives in
+     * {@link ScoringEngine} so the rules stay directly testable.
+     */
+    private void updateMasterScore(Game game, java.time.LocalDate referenceDate, Player player,
+                                   List<Result> allPlayerResults) {
+        double score = ScoringEngine.masterScore(
+                allPlayerResults, game.getId(), referenceDate, config);
+        player.setMasterScore(BigDecimal.valueOf(score));
+        player.setHasResults(ScoringEngine.hasQualifyingResults(
+                allPlayerResults, game.getId(), referenceDate, config));
     }
 }

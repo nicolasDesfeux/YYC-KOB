@@ -264,17 +264,17 @@ public class HtmlWriter {
             int numPlayers = results.size();
             int numTiers = Math.max(1, numPlayers / 4);
 
-            boolean enoughPlayers = numPlayers >= KOB.MINIMUM_NB_PLAYERS;
-            boolean withinYear = !KOB.LIMIT_TO_A_YEAR || lastGameDate == null
+            boolean enoughPlayers = numPlayers >= KOB.config().minimumNbPlayers;
+            boolean withinYear = !KOB.config().limitToAYear || lastGameDate == null
                     || game.getDate().isAfter(referenceDate.minusYears(1));
             boolean counted = enoughPlayers && withinYear;
             long gap = lastGameId - game.getId();
             String bucket = counted
-                    ? (gap <= KOB.RECENT_WINDOW_SIZE ? "recent"
-                      : gap < KOB.RECENT_WINDOW_SIZE * 2 ? "mid avg"
+                    ? (gap <= KOB.config().recentWindowSize ? "recent"
+                      : gap < KOB.config().recentWindowSize * 2 ? "mid avg"
                       : "old avg")
                     : "";
-            String notCountedReason = !enoughPlayers ? "< " + KOB.MINIMUM_NB_PLAYERS + " players"
+            String notCountedReason = !enoughPlayers ? "< " + KOB.config().minimumNbPlayers + " players"
                     : !withinYear ? "&gt; 1 year old" : "";
 
             // Compute starting tiers from pre-game master score rank

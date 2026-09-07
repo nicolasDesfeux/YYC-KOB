@@ -6,12 +6,12 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,10 +49,11 @@ public class GSheetGameInputDao implements GameInputDao {
         }
         // Mutable copy so we can extend it with new players
         List<Object> resultHeader = new ArrayList<>(results.get(0));
-        Map<String, Integer> playerCol = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        // Keyed on the canonical name so the importer and the scorer agree on identity.
+        Map<String, Integer> playerCol = new HashMap<>();
         for (int j = 2; j < resultHeader.size(); j++) {
             if (resultHeader.get(j) != null && !resultHeader.get(j).toString().isBlank())
-                playerCol.put(resultHeader.get(j).toString().trim(), j);
+                playerCol.put(dto.Player.normaliseName(resultHeader.get(j).toString()), j);
         }
         log.debug("Game Results header has {} player columns", playerCol.size());
 
@@ -99,7 +100,8 @@ public class GSheetGameInputDao implements GameInputDao {
             List<Object> row = input.get(i);
             if (row.isEmpty() || row.get(0) == null) continue;
             String name = row.get(0).toString().trim();
-            if (!name.isEmpty() && !playerCol.containsKey(name) && !newPlayers.contains(name)) {
+            if (!name.isEmpty() && !playerCol.containsKey(dto.Player.normaliseName(name))
+                    && newPlayers.stream().noneMatch(n -> dto.Player.normaliseName(n).equals(dto.Player.normaliseName(name)))) {
                 newPlayers.add(name);
             }
         }
@@ -108,7 +110,7 @@ public class GSheetGameInputDao implements GameInputDao {
             for (String name : newPlayers) {
                 int newCol = resultHeader.size();
                 resultHeader.add(name);
-                playerCol.put(name, newCol);
+                playerCol.put(dto.Player.normaliseName(name), newCol);
                 log.debug("  {} → column {}", name, newCol);
             }
             connector.writeHeader(RESULT_SHEET, resultHeader);
@@ -142,7 +144,7 @@ public class GSheetGameInputDao implements GameInputDao {
                     continue;
                 }
 
-                Integer col = playerCol.get(playerName);
+                Integer col = playerCol.get(dto.Player.normaliseName(playerName));
                 if (col == null) {
                     log.warn("Player '{}' not found in Game Results header — skipping", playerName);
                     unmatched++;

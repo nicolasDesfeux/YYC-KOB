@@ -15,6 +15,7 @@
 	</properties>
 	<build>
 		<sourceDirectory>src/main/java</sourceDirectory>
+		<testSourceDirectory>src/test/java</testSourceDirectory>
 		<plugins>
 			<plugin>
 				<!-- Build an executable JAR -->
@@ -72,6 +73,12 @@
 					</execution>
 				</executions>
 			</plugin>
+			<plugin>
+				<!-- Runs the JUnit 5 suite during `mvn test` / `mvn package` -->
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.2.5</version>
+			</plugin>
 		</plugins>
 	</build>
 	<dependencies>
@@ -116,6 +123,12 @@
 			<version>2.22.1</version> <!-- Use the same version as log4j-api -->
 		</dependency>
 
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<version>5.10.2</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 

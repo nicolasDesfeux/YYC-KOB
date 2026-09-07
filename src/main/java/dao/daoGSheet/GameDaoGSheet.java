@@ -38,7 +38,7 @@ public class GameDaoGSheet implements GameDao {
             for (int j = 1; j < sheet.size(); j++) {
                 List<Object> row = sheet.get(j);
                 long count = row.stream().filter(object -> object != null && !object.toString().isEmpty()).count() - 2;
-                if (count > KOB.MINIMUM_NB_PLAYERS) {
+                if (count > KOB.config().minimumNbPlayers) {
                     long gameId = Long.parseLong(row.get(0).toString());
                     String date = row.get(1).toString();
                     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");

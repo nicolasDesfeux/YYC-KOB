@@ -42,7 +42,7 @@ public class ResultDaoGSheet implements ResultDao {
             for (int i = 1; i < sheet.size() && gameIndex < allGames.size(); i++) {
                 List<Object> objects = sheet.get(i);
                 long count = objects.stream().filter(object -> object != null && !object.toString().isEmpty()).count() - 2;
-                if (count > KOB.MINIMUM_NB_PLAYERS) {
+                if (count > KOB.config().minimumNbPlayers) {
                     Game currentGame = allGames.get(gameIndex++);
 for (int j = 2; j < sheet.get(0).size(); j++) {
                         Object object = j < objects.size() ? objects.get(j) : null;
