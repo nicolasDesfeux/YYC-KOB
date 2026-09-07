@@ -190,16 +190,21 @@ masterScore = (68.2 + 71.0 + 64.5 + 70.1 + 67.7 + 61.6) / 6 = 67.2
 
 ### Tuning constants
 
-All in `KOB.java`:
+Set these in `config.properties` under the `scoring.` prefix; any key you omit
+falls back to the default below, so an unchanged file behaves as it always has.
+`KobConfig` holds the parsed values and `ScoringEngine` takes them explicitly:
 
-| Constant              | Value  | Meaning                                                      |
-| --------------------- | ------ | ------------------------------------------------------------ |
-| `INITIAL_SCORE`       | `50`   | Starting master score for a new or returning player           |
-| `MINIMUM_NB_PLAYERS`  | `8`    | Attendance gate — see [Known quirks](#known-quirks)           |
-| `SCORE_RANGE_MARGIN`  | `10`   | Padding above/below the field so the edges can still move     |
-| `RECENT_WINDOW_SIZE`  | `8`    | Bucket width in games; recent ≤ 8, mid 9–15, old ≥ 16         |
-| `QUARTILE_DIVISOR`    | `4`    | Divisor for the top/bottom sample (4 → quartiles)             |
-| `LIMIT_TO_A_YEAR`     | `true` | Whether results older than a year are discarded               |
+| Property                   | Default | Meaning                                                   |
+| -------------------------- | ------- | --------------------------------------------------------- |
+| `scoring.initial.score`    | `50`    | Starting master score for a new or returning player        |
+| `scoring.minimum.players`  | `8`     | Attendance gate — see [Known quirks](#known-quirks)        |
+| `scoring.range.margin`     | `10`    | Padding above/below the field so the edges can still move  |
+| `scoring.recent.window`    | `8`     | Bucket width in games; recent ≤ 8, mid 9–15, old ≥ 16      |
+| `scoring.quartile.divisor` | `4`     | Divisor for the top/bottom sample (4 → quartiles)          |
+| `scoring.limit.to.year`    | `true`  | Whether results older than a year are discarded            |
+
+A malformed value is reported on stderr and the default used, so a typo cannot
+take the scheduled run down.
 
 ---
 
@@ -304,6 +309,10 @@ pre- and post-game master scores, the score range, and the quartile averages.
 Generated as a single self-contained `dashboard.html`:
 
 - **Ranking** — podium plus a sortable, searchable table of current standings.
+  Each row carries position change since the previous game (▲/▼), the score
+  delta, a sparkline of the last ten games, games played, home tier, and the
+  date last played. Rows are banded in fours to mirror how courts are formed,
+  and players on an identical score share a rank.
 - **Statistics** — global leaders (most wins, most games, per-tier records) and
   a per-player breakdown.
 - **Games** — full history. Each game expands to show tier groupings, winners,
@@ -375,7 +384,9 @@ The dashboard then lives at
 ```
 src/main/java/
 ├── kob/
-│   ├── KOB.java                  Entry point, scoring engine, CLI
+│   ├── KOB.java                  Entry point, forward pass over history, CLI
+│   ├── ScoringEngine.java        The scoring maths as pure functions
+│   ├── KobConfig.java            Tunable parameters loaded from properties
 │   └── StatisticsComputer.java   Global and per-player statistics
 ├── dto/
 │   ├── Game.java                 A session: id, date, score range
@@ -395,6 +406,23 @@ input staging.
 
 ---
 
+## Tests
+
+```bash
+mvn test
+```
+
+JUnit 5 covers the scoring rules directly, since `ScoringEngine` is pure: the
+score range and both of its clamps, the finish-to-score mapping including
+fractional tie positions, all three recency buckets and their boundaries at
+gap 8 and gap 16, the one-year cutoff tracking the reference date, config
+parsing and fallback, and name normalisation.
+
+Two tests pin behaviour that is *current* rather than *correct*, and say so in
+their names — see Known quirks below.
+
+---
+
 ## Known quirks
 
 **The attendance gate is off by one.** `MINIMUM_NB_PLAYERS` is 8, but the loaders
@@ -408,6 +436,14 @@ Worth reconciling to a single comparison.
 forward pass, so cached values win over freshly computed ones. After changing
 the scoring rules, run `--clear-cache` — otherwise the old numbers persist and
 the dashboard will appear not to have picked up the change.
+
+**A tiny field collapses the score floor to zero.** When a game has fewer
+players than `scoring.quartile.divisor`, the quartile sample is empty and both
+ends of the range start at zero. The ceiling is then clamped up to the best
+player, but the floor is only ever clamped *downward*, so it stays at zero
+instead of rising to the weakest player. The attendance gate makes this
+unreachable in practice; `ScoringEngineTest.tinyFieldCollapsesFloor` pins the
+behaviour so a future change to the gate cannot introduce it silently.
 
 **Dates are entered by hand.** The importer leaves the date column blank. A game
 with no date will not load, which can look like a silent import failure.

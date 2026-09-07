@@ -13,6 +13,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -64,7 +65,7 @@ public class HtmlWriter {
         sb.append("</header>\n");
 
         sb.append("<main>\n");
-        sb.append(rankingTab(ranking));
+        sb.append(rankingTab(ranking, playerStats, allGames, resultsByGame, computedScores));
         sb.append(statisticsTab(global, playerStats));
         sb.append(gamesTab(allGames, resultsByGame));
         sb.append(evolutionTab(playerStats));
@@ -79,7 +80,17 @@ public class HtmlWriter {
     // Ranking tab
     // -------------------------------------------------------------------------
 
-    private String rankingTab(List<Player> ranking) {
+    /** One row of the ranking table, with everything needed to render it. */
+    private record RankRow(Player player, int rank, Integer previousRank,
+                           Double scoreDelta, List<Double> spark,
+                           int gamesPlayed, int homeTier, java.time.LocalDate lastPlayed) {
+        /** Positions gained since the previous game; positive is upward. */
+        Integer movement() { return previousRank == null ? null : previousRank - rank; }
+    }
+
+    private String rankingTab(List<Player> ranking, List<PlayerStats> playerStats,
+                              List<Game> allGames, Map<Game, List<Result>> resultsByGame,
+                              Map<Long, Map<String, Double>> computedScores) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div id=\"tab-ranking\" class=\"tab-content\">\n");
 
@@ -91,27 +102,173 @@ public class HtmlWriter {
             sb.append("</div>\n");
         }
 
+        List<RankRow> rows = buildRankRows(ranking, playerStats, allGames, resultsByGame, computedScores);
+
         sb.append("<div class=\"table-wrap\">\n");
         sb.append("<input class=\"search-box\" type=\"text\" placeholder=\"Search player...\" oninput=\"filterTable('rankingTable',this.value)\">\n");
-        sb.append("<table id=\"rankingTable\" class=\"data-table sortable\">\n");
+        sb.append("<table id=\"rankingTable\" class=\"data-table sortable ranking-table\">\n");
         sb.append("<thead><tr>");
         sb.append("<th onclick=\"sortTable('rankingTable',0,'num')\">#</th>");
-        sb.append("<th onclick=\"sortTable('rankingTable',1,'str')\">Player</th>");
-        sb.append("<th onclick=\"sortTable('rankingTable',2,'num')\">Master Score</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',1,'num')\" title=\"Positions gained or lost since the previous game\">+/-</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',2,'str')\">Player</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',3,'num')\">Master Score</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',4,'num')\" title=\"Change in master score since the previous game\">Change</th>");
+        sb.append("<th class=\"col-trend\">Trend</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',6,'num')\">Games</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',7,'num')\" title=\"Tier this player appears in most often\">Tier</th>");
+        sb.append("<th onclick=\"sortTable('rankingTable',8,'str')\">Last played</th>");
         sb.append("</tr></thead><tbody>\n");
 
-        for (int i = 0; i < ranking.size(); i++) {
-            Player p = ranking.get(i);
-            String cls = i == 0 ? " class=\"rank-gold\"" : i == 1 ? " class=\"rank-silver\"" : i == 2 ? " class=\"rank-bronze\"" : "";
-            sb.append("<tr").append(cls).append(">");
-            sb.append("<td>").append(i + 1).append("</td>");
-            sb.append("<td>").append(esc(p.getName())).append("</td>");
-            sb.append("<td>").append(String.format("%.2f", p.getMasterScore().setScale(2, RoundingMode.HALF_UP).doubleValue())).append("</td>");
+        int previousTier = -1;
+        for (RankRow r : rows) {
+            // Visually separate blocks of four, mirroring how courts are formed.
+            int block = (r.rank() - 1) / 4;
+            String rowCls = r.rank() == 1 ? "rank-gold"
+                          : r.rank() == 2 ? "rank-silver"
+                          : r.rank() == 3 ? "rank-bronze" : "";
+            if (block != previousTier && r.rank() > 3) rowCls += " tier-start";
+            previousTier = block;
+
+            sb.append("<tr").append(rowCls.isBlank() ? "" : " class=\"" + rowCls.trim() + "\"").append(">");
+            sb.append("<td>").append(r.rank()).append("</td>");
+
+            // Movement
+            Integer mv = r.movement();
+            if (mv == null) {
+                sb.append("<td data-sort=\"0\" class=\"mv-new\" title=\"No previous ranking\">&#8226;</td>");
+            } else if (mv > 0) {
+                sb.append("<td data-sort=\"").append(mv).append("\" class=\"mv-up\">&#9650;").append(mv).append("</td>");
+            } else if (mv < 0) {
+                sb.append("<td data-sort=\"").append(mv).append("\" class=\"mv-down\">&#9660;").append(-mv).append("</td>");
+            } else {
+                sb.append("<td data-sort=\"0\" class=\"mv-same\">&ndash;</td>");
+            }
+
+            sb.append("<td>").append(esc(r.player().getName())).append("</td>");
+            sb.append("<td class=\"score-cell\">")
+              .append(String.format("%.2f", r.player().getMasterScore().setScale(2, RoundingMode.HALF_UP).doubleValue()))
+              .append("</td>");
+
+            // Score delta
+            if (r.scoreDelta() == null) {
+                sb.append("<td data-sort=\"0\" class=\"delta-neu\">&ndash;</td>");
+            } else {
+                double d = r.scoreDelta();
+                String cls = d > 0.05 ? "delta-pos" : d < -0.05 ? "delta-neg" : "delta-neu";
+                sb.append("<td data-sort=\"").append(String.format("%.4f", d)).append("\" class=\"").append(cls).append("\">")
+                  .append(d >= 0 ? "+" : "").append(String.format("%.1f", d)).append("</td>");
+            }
+
+            sb.append("<td class=\"col-trend\">").append(sparkline(r.spark())).append("</td>");
+            sb.append("<td>").append(r.gamesPlayed()).append("</td>");
+            sb.append("<td>").append(r.homeTier() > 0 ? "T" + r.homeTier() : "&ndash;").append("</td>");
+            sb.append("<td data-sort=\"").append(r.lastPlayed() == null ? "" : r.lastPlayed())
+              .append("\">").append(r.lastPlayed() == null ? "&ndash;" : r.lastPlayed().toString()).append("</td>");
             sb.append("</tr>\n");
         }
         sb.append("</tbody></table></div>\n");
         sb.append("</div>\n");
         return sb.toString();
+    }
+
+    /** Assembles per-player ranking context: movement, delta, recent trend, activity. */
+    private List<RankRow> buildRankRows(List<Player> ranking, List<PlayerStats> playerStats,
+                                        List<Game> allGames, Map<Game, List<Result>> resultsByGame,
+                                        Map<Long, Map<String, Double>> computedScores) {
+        Map<String, PlayerStats> statsByName = new HashMap<>();
+        for (PlayerStats ps : playerStats) statsByName.put(ps.player.getName(), ps);
+
+        // Most recent date each player actually appeared.
+        Map<String, java.time.LocalDate> lastPlayed = new HashMap<>();
+        for (Map.Entry<Game, List<Result>> e : resultsByGame.entrySet()) {
+            for (Result r : e.getValue()) {
+                lastPlayed.merge(r.getPlayer().getName(), e.getKey().getDate(),
+                        (a, b) -> a.isAfter(b) ? a : b);
+            }
+        }
+
+        List<Long> gameIds = computedScores.keySet().stream().sorted().collect(Collectors.toList());
+        // Ranking as it stood after the previous game, for the movement column.
+        Map<String, Integer> previousRanks = new HashMap<>();
+        if (gameIds.size() >= 2) {
+            Map<String, Double> prev = computedScores.get(gameIds.get(gameIds.size() - 2));
+            List<String> ordered = prev.entrySet().stream()
+                    .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+            for (int i = 0; i < ordered.size(); i++) previousRanks.put(ordered.get(i), i + 1);
+        }
+        Map<String, Double> previousScores = gameIds.size() >= 2
+                ? computedScores.get(gameIds.get(gameIds.size() - 2))
+                : Map.of();
+
+        // The last 10 snapshots drive the trend sparkline.
+        List<Long> sparkGames = gameIds.subList(Math.max(0, gameIds.size() - 10), gameIds.size());
+
+        List<RankRow> rows = new ArrayList<>();
+        int displayedRank = 0;
+        String lastScoreKey = null;
+        int sharedRank = 0;
+
+        for (int i = 0; i < ranking.size(); i++) {
+            Player p = ranking.get(i);
+            String name = p.getName();
+            displayedRank++;
+
+            // Players on an identical score share a rank number.
+            String scoreKey = String.format("%.2f", p.getMasterScore().doubleValue());
+            int rank = scoreKey.equals(lastScoreKey) ? sharedRank : displayedRank;
+            if (!scoreKey.equals(lastScoreKey)) sharedRank = displayedRank;
+            lastScoreKey = scoreKey;
+
+            Integer prevRank = previousRanks.get(name);
+            Double prevScore = previousScores.get(name);
+            Double delta = prevScore == null ? null : p.getMasterScore().doubleValue() - prevScore;
+
+            List<Double> spark = new ArrayList<>();
+            for (Long gid : sparkGames) {
+                Double v = computedScores.getOrDefault(gid, Map.of()).get(name);
+                if (v != null) spark.add(v);
+            }
+
+            PlayerStats ps = statsByName.get(name);
+            rows.add(new RankRow(p, rank, prevRank, delta, spark,
+                    ps == null ? 0 : ps.gamesPlayed,
+                    ps == null ? 0 : ps.mostPlayedTier,
+                    lastPlayed.get(name)));
+        }
+        return rows;
+    }
+
+    /** Inline SVG trend line; renders nothing meaningful below two points. */
+    private String sparkline(List<Double> values) {
+        if (values == null || values.size() < 2) return "<span class=\"spark-empty\">&ndash;</span>";
+
+        double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+        double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(1);
+        double range = max - min;
+        int w = 72, h = 20, pad = 2;
+
+        StringBuilder pts = new StringBuilder();
+        for (int i = 0; i < values.size(); i++) {
+            double x = pad + (w - 2.0 * pad) * i / (values.size() - 1);
+            // A flat run sits mid-height rather than dividing by zero.
+            double norm = range < 1e-9 ? 0.5 : (values.get(i) - min) / range;
+            double y = h - pad - (h - 2.0 * pad) * norm;
+            if (i > 0) pts.append(' ');
+            pts.append(String.format("%.1f,%.1f", x, y));
+        }
+
+        boolean rising = values.get(values.size() - 1) >= values.get(0);
+        String cls = rising ? "spark-up" : "spark-down";
+        double lastX = pad + (w - 2.0 * pad);
+        double lastNorm = range < 1e-9 ? 0.5 : (values.get(values.size() - 1) - min) / range;
+        double lastY = h - pad - (h - 2.0 * pad) * lastNorm;
+
+        return "<svg class=\"spark " + cls + "\" width=\"" + w + "\" height=\"" + h + "\" viewBox=\"0 0 " + w + " " + h + "\">"
+             + "<polyline points=\"" + pts + "\"/>"
+             + String.format("<circle cx=\"%.1f\" cy=\"%.1f\" r=\"2\"/>", lastX, lastY)
+             + "</svg>";
     }
 
     private void podiumCard(StringBuilder sb, List<Player> ranking, int idx, String cls, String label, String medal) {
@@ -744,6 +901,25 @@ public class HtmlWriter {
             ".game-id{font-weight:800;color:var(--navy);font-size:1em;min-width:80px}" +
             ".game-date{color:var(--muted);font-size:.9em}" +
             ".game-players{color:var(--muted);font-size:.85em}" +
+            // --- Ranking table extras ---
+            ".ranking-table td{vertical-align:middle}" +
+            ".ranking-table .score-cell{font-weight:700;font-variant-numeric:tabular-nums}" +
+            ".ranking-table tr.tier-start td{border-top:2px solid var(--border)}" +
+            ".mv-up{color:#16a34a;font-weight:700;font-size:.85em;white-space:nowrap}" +
+            ".mv-down{color:#dc2626;font-weight:700;font-size:.85em;white-space:nowrap}" +
+            ".mv-same{color:var(--muted)}" +
+            ".mv-new{color:var(--muted);font-size:.8em}" +
+            ".delta-pos{color:#16a34a;font-weight:600;font-variant-numeric:tabular-nums}" +
+            ".delta-neg{color:#dc2626;font-weight:600;font-variant-numeric:tabular-nums}" +
+            ".delta-neu{color:var(--muted);font-variant-numeric:tabular-nums}" +
+            ".spark{display:block}" +
+            ".spark polyline{fill:none;stroke-width:1.5;vector-effect:non-scaling-stroke}" +
+            ".spark.spark-up polyline{stroke:#16a34a}" +
+            ".spark.spark-down polyline{stroke:#dc2626}" +
+            ".spark.spark-up circle{fill:#16a34a}" +
+            ".spark.spark-down circle{fill:#dc2626}" +
+            ".spark-empty{color:var(--muted)}" +
+            "@media(max-width:820px){.col-trend{display:none}}" +
             ".game-winners{font-size:.9em;font-weight:600;color:var(--gold);flex:1;text-align:center}" +
             ".game-chevron{font-size:.8em;color:var(--muted);transition:transform .2s}" +
             ".game-chevron.open{transform:rotate(180deg)}" +
@@ -892,11 +1068,15 @@ public class HtmlWriter {
             "th.classList.add(asc?'sort-desc':'sort-asc');" +
             "var rows=Array.from(tbl.querySelectorAll('tbody tr'));" +
             "rows.sort((a,b)=>{" +
-            "var av=a.cells[col]?a.cells[col].textContent.trim():'';" +
-            "var bv=b.cells[col]?b.cells[col].textContent.trim():'';" +
+            // Prefer data-sort: cells like the movement arrows carry a signed
+            // numeric value that their rendered text does not expose.
+            "var ac=a.cells[col],bc=b.cells[col];" +
+            "var av=ac?(ac.dataset.sort!==undefined?ac.dataset.sort:ac.textContent.trim()):'';" +
+            "var bv=bc?(bc.dataset.sort!==undefined?bc.dataset.sort:bc.textContent.trim()):'';" +
             "if(type==='num'){av=parseFloat(av.replace('%',''))||0;bv=parseFloat(bv.replace('%',''))||0;" +
             "return asc?bv-av:av-bv;}" +
             "return asc?bv.localeCompare(av):av.localeCompare(bv);});" +
+            "if(col!==0){rows.forEach(r=>r.classList.remove('tier-start'));}" +
             "rows.forEach(r=>tbl.querySelector('tbody').appendChild(r));}\n" +
             evoJs() +
             "</script>\n";
