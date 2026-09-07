@@ -160,7 +160,6 @@ public class GameDaoJDBC implements GameDao {
     public Game getGameClosestTo(LocalDate asOfDate) {
         Connection connection = DatabaseConnection.getInstance().getConnection();
         try {
-            Statement stmt = connection.createStatement();
             PreparedStatement ps = connection.prepareStatement("SELECT * FROM game where isComplete and sessionDate<=? order by sessionDate desc limit 1");
             ps.setDate(1, Date.valueOf(asOfDate));
             ResultSet rs = ps.executeQuery();

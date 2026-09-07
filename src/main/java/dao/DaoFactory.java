@@ -2,11 +2,13 @@ package dao;
 
 import dao.daoGSheet.GameDaoGSheet;
 import dao.daoGSheet.GSheetConnector;
+import dao.daoGSheet.GSheetGameInputDao;
 import dao.daoGSheet.GSheetRankingWriter;
 import dao.daoGSheet.GSheetScoreCacheDao;
 import dao.daoGSheet.PlayerDaoGSheet;
 import dao.daoGSheet.ResultDaoGSheet;
 import dao.daoInterface.GameDao;
+import dao.daoInterface.GameInputDao;
 import dao.daoInterface.PlayerDao;
 import dao.daoInterface.RankingWriter;
 import dao.daoInterface.ResultDao;
@@ -71,7 +73,14 @@ public class DaoFactory {
     public ScoreCacheDao createScoreCacheDao() {
         return switch (type) {
             case "GSheet" -> new GSheetScoreCacheDao(connector);
-            default       -> null; // no-op for JDBC
+            default       -> null;
+        };
+    }
+
+    public GameInputDao createGameInputDao() {
+        return switch (type) {
+            case "GSheet" -> new GSheetGameInputDao(connector);
+            default       -> null;
         };
     }
 }

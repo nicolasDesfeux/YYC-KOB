@@ -15,8 +15,10 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -27,14 +29,16 @@ public class HtmlWriter {
 
     public void write(String outputPath, List<Player> ranking,
                       GlobalStats global, List<PlayerStats> playerStats,
-                      List<Game> allGames, Map<Game, List<Result>> resultsByGame) throws IOException {
+                      List<Game> allGames, Map<Game, List<Result>> resultsByGame,
+                      Map<Long, Map<String, Double>> computedScores) throws IOException {
         try (PrintWriter out = new PrintWriter(outputPath, "UTF-8")) {
-            out.print(buildHtml(ranking, global, playerStats, allGames, resultsByGame));
+            out.print(buildHtml(ranking, global, playerStats, allGames, resultsByGame, computedScores));
         }
     }
 
     private String buildHtml(List<Player> ranking, GlobalStats global, List<PlayerStats> playerStats,
-                              List<Game> allGames, Map<Game, List<Result>> resultsByGame) {
+                              List<Game> allGames, Map<Game, List<Result>> resultsByGame,
+                              Map<Long, Map<String, Double>> computedScores) {
         String ts = LocalDateTime.now(ZoneId.of("Canada/Mountain"))
                 .format(DateTimeFormatter.ofPattern("MMMM d, yyyy 'at' HH:mm"));
 
@@ -55,6 +59,7 @@ public class HtmlWriter {
         sb.append("<button class=\"tab active\" onclick=\"showTab('ranking',this)\">&#127942; Ranking</button>");
         sb.append("<button class=\"tab\" onclick=\"showTab('statistics',this)\">&#128202; Statistics</button>");
         sb.append("<button class=\"tab\" onclick=\"showTab('games',this)\">&#127917; Games</button>");
+        sb.append("<button class=\"tab\" onclick=\"showTab('evolution',this)\">&#128200; Evolution</button>");
         sb.append("</nav>");
         sb.append("</header>\n");
 
@@ -62,9 +67,10 @@ public class HtmlWriter {
         sb.append(rankingTab(ranking));
         sb.append(statisticsTab(global, playerStats));
         sb.append(gamesTab(allGames, resultsByGame));
+        sb.append(evolutionTab(playerStats));
         sb.append("</main>\n");
 
-        sb.append(js(playerStats, global.maxTier, allGames, resultsByGame));
+        sb.append(js(playerStats, global.maxTier, allGames, resultsByGame, computedScores));
         sb.append("</body></html>");
         return sb.toString();
     }
@@ -248,9 +254,10 @@ public class HtmlWriter {
                 .sorted(Comparator.comparing(Game::getId).reversed())
                 .collect(Collectors.toList());
 
-        java.time.LocalDate lastGameDate = allGames.stream()
-                .max(Comparator.comparing(Game::getId))
-                .map(Game::getDate).orElse(null);
+        Game lastGame = allGames.stream().max(Comparator.comparing(Game::getId)).orElse(null);
+        java.time.LocalDate lastGameDate = lastGame != null ? lastGame.getDate() : null;
+        long lastGameId = lastGame != null ? lastGame.getId() : 0;
+        java.time.LocalDate referenceDate = java.time.LocalDate.now();
 
         for (Game game : sorted) {
             List<Result> results = resultsByGame.get(game);
@@ -259,8 +266,14 @@ public class HtmlWriter {
 
             boolean enoughPlayers = numPlayers >= KOB.MINIMUM_NB_PLAYERS;
             boolean withinYear = !KOB.LIMIT_TO_A_YEAR || lastGameDate == null
-                    || game.getDate().isAfter(lastGameDate.minusYears(1));
+                    || game.getDate().isAfter(referenceDate.minusYears(1));
             boolean counted = enoughPlayers && withinYear;
+            long gap = lastGameId - game.getId();
+            String bucket = counted
+                    ? (gap <= KOB.RECENT_WINDOW_SIZE ? "recent"
+                      : gap < KOB.RECENT_WINDOW_SIZE * 2 ? "mid avg"
+                      : "old avg")
+                    : "";
             String notCountedReason = !enoughPlayers ? "< " + KOB.MINIMUM_NB_PLAYERS + " players"
                     : !withinYear ? "&gt; 1 year old" : "";
 
@@ -276,8 +289,8 @@ public class HtmlWriter {
             // Find winners and build player name list for filtering
             List<String> winnerNames = results.stream()
                     .filter(r -> ((int) r.getResult() - 1) % 4 == 0)
+                    .sorted(Comparator.comparingDouble(Result::getResult))
                     .map(r -> r.getPlayer().getName())
-                    .sorted()
                     .collect(Collectors.toList());
             List<String> allNames = results.stream()
                     .map(r -> r.getPlayer().getName())
@@ -294,7 +307,7 @@ public class HtmlWriter {
             sb.append("<span class=\"game-players\">").append(numPlayers).append(" players &middot; ")
               .append(numTiers).append(" tier").append(numTiers > 1 ? "s" : "").append("</span>");
             if (counted)
-                sb.append("<span class=\"scoring-yes\">&#10003; counted</span>");
+                sb.append("<span class=\"scoring-yes\">&#10003; counted (").append(bucket).append(")</span>");
             else
                 sb.append("<span class=\"scoring-no\">&#10007; not counted (").append(notCountedReason).append(")</span>");
             sb.append("</div>");
@@ -362,6 +375,287 @@ public class HtmlWriter {
 
         sb.append("</div>\n</section>\n</div>\n"); // gamesList, section, tab
         return sb.toString();
+    }
+
+    // -------------------------------------------------------------------------
+    // Evolution tab
+    // -------------------------------------------------------------------------
+
+    private String evolutionTab(List<PlayerStats> players) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div id=\"tab-evolution\" class=\"tab-content\" style=\"display:none\">\n");
+
+        // Top 10 section
+        sb.append("<section class=\"section\">\n");
+        sb.append("<h2 class=\"section-title\">Top 10 Ranking Evolution</h2>\n");
+
+        sb.append("<div class=\"evo-controls\">\n");
+        sb.append("<div class=\"evo-playback\">");
+        sb.append("<button id=\"evoPlayBtn\" class=\"evo-play-btn\" onclick=\"toggleEvoPlay()\">&#9654; Play</button>");
+        sb.append("<input type=\"range\" id=\"evoSlider\" min=\"0\" max=\"0\" value=\"0\" oninput=\"onEvoSlider(this.value)\" class=\"evo-slider\">");
+        sb.append("<span id=\"evoLabel\" class=\"evo-label\"></span>");
+        sb.append("</div>\n");
+        sb.append("<div class=\"evo-speed-group\"><span>Speed:</span>");
+        sb.append("<button class=\"evo-speed-btn\" onclick=\"setEvoSpeed(120,this)\">Slow</button>");
+        sb.append("<button class=\"evo-speed-btn active\" onclick=\"setEvoSpeed(50,this)\">Normal</button>");
+        sb.append("<button class=\"evo-speed-btn\" onclick=\"setEvoSpeed(16,this)\">Fast</button>");
+        sb.append("</div>\n");
+        sb.append("</div>\n"); // evo-controls
+
+        sb.append("<div class=\"evo-chart-wrap\"><canvas id=\"top10Canvas\" class=\"evo-canvas\" height=\"470\"></canvas></div>\n");
+        sb.append("<div id=\"top10Legend\" class=\"evo-legend\"></div>\n");
+        sb.append("<div id=\"top10Tooltip\" class=\"evo-tooltip\"></div>\n");
+        sb.append("</section>\n");
+
+        // Individual player section
+        sb.append("<section class=\"section\">\n");
+        sb.append("<h2 class=\"section-title\">Player Evolution</h2>\n");
+        sb.append("<div class=\"player-selector\">\n");
+        sb.append("<label for=\"evoPlayerSelect\">View player: </label>\n");
+        sb.append("<select id=\"evoPlayerSelect\" onchange=\"onEvoPlayer()\">\n");
+        sb.append("<option value=\"\">— Select player —</option>\n");
+        for (PlayerStats ps : players)
+            sb.append("<option value=\"").append(esc(ps.player.getName())).append("\">")
+              .append(esc(ps.player.getName())).append("</option>\n");
+        sb.append("</select></div>\n");
+
+        sb.append("<div id=\"playerChartsSection\" style=\"display:none\">\n");
+        sb.append("<p class=\"evo-chart-label\">Master Score</p>\n");
+        sb.append("<div class=\"evo-chart-wrap\"><canvas id=\"playerScoreCanvas\" class=\"evo-canvas\" height=\"220\"></canvas></div>\n");
+        sb.append("<p class=\"evo-chart-label\" style=\"margin-top:20px\">Rank Position</p>\n");
+        sb.append("<div class=\"evo-chart-wrap\"><canvas id=\"playerRankCanvas\" class=\"evo-canvas\" height=\"180\"></canvas></div>\n");
+        sb.append("</div>\n");
+        sb.append("<div id=\"playerTooltip\" class=\"evo-tooltip\"></div>\n");
+        sb.append("</section>\n");
+        sb.append("</div>\n");
+        return sb.toString();
+    }
+
+    /** Builds the EVO JSON data block embedded in the HTML. */
+    private String buildEvoJson(List<Game> allGames, Map<Long, Map<String, Double>> computedScores) {
+        List<Game> gamesWithScores = allGames.stream()
+                .filter(g -> computedScores.containsKey(g.getId()))
+                .sorted(Comparator.comparing(Game::getId))
+                .collect(Collectors.toList());
+
+        // Collect all player names that ever appear, maintaining insertion order
+        Set<String> playerNames = new LinkedHashSet<>();
+        gamesWithScores.forEach(g -> playerNames.addAll(computedScores.get(g.getId()).keySet()));
+
+        StringBuilder sb = new StringBuilder("const EVO={\ngames:[");
+        for (Game g : gamesWithScores)
+            sb.append("{id:").append(g.getId()).append(",date:'").append(g.getDate()).append("'},");
+        sb.append("],\nscores:{\n");
+
+        for (String name : playerNames) {
+            sb.append("'").append(name.replace("\\", "\\\\").replace("'", "\\'")).append("':[");
+            for (Game g : gamesWithScores) {
+                Double score = computedScores.get(g.getId()).get(name);
+                if (score != null) sb.append(String.format("%.2f", score));
+                else sb.append("null");
+                sb.append(",");
+            }
+            sb.append("],\n");
+        }
+        sb.append("}};\n");
+        return sb.toString();
+    }
+
+    // -------------------------------------------------------------------------
+    // Evolution JS
+    // -------------------------------------------------------------------------
+
+    private String evoJs() {
+        return
+        // ── Palette ──────────────────────────────────────────────────────────
+        "const EVO_PALETTE=['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'];\n" +
+        "const EVO_PALETTE_LIGHT=['#c9daf8','#ffe8c2','#ffd6d6','#d9f0ee','#d6eed6','#fef9d6','#ead6f0','#ffe8ed','#e8ddd8','#eeeeed'];\n" +
+
+        // ── State ─────────────────────────────────────────────────────────────
+        "let evoRankings=null;\n" +
+        "let evoCurrent=0,evoPlaying=false,evoTimer=null,evoSpeed=600,evoInited=false;\n" +
+        "let evoSelectedPlayer='';\n" +
+        "let evoAnimFrame=null,evoAnimStart=null,evoAnimFrom=null,evoAnimTo=null;\n" +
+        "const EVO_TRANS_MS=480;\n" +
+        "let evoCurrentBarState={};\n" +
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        "function evoInit(){\n" +
+        "if(evoInited)return;evoInited=true;\n" +
+        "evoRankings=EVO.games.map((_,gi)=>{\n" +
+        "  const e=[];for(const[n,s]of Object.entries(EVO.scores))if(s[gi]!=null)e.push({name:n,score:s[gi]});\n" +
+        "  return e.sort((a,b)=>b.score-a.score);});\n" +
+        "evoCurrent=EVO.games.length-1;\n" +
+        "const sl=document.getElementById('evoSlider');sl.max=EVO.games.length-1;sl.value=evoCurrent;\n" +
+        "evoCurrentBarState=evoComputeState(evoCurrent);\n" +
+        "evoUpdateLabel();evoRedraw();\n" +
+        "evoSetupPlayerHover();\n" +
+        "window.addEventListener('resize',()=>{if(evoInited)evoRedraw();});}\n" +
+
+        // ── Stable color per player ───────────────────────────────────────────
+        "function evoColorOf(name,light){\n" +
+        "const ft=evoRankings[EVO.games.length-1].slice(0,10).map(e=>e.name);\n" +
+        "const i=ft.indexOf(name);const idx=i>=0?i:Object.keys(EVO.scores).sort().indexOf(name)%10;\n" +
+        "return light?EVO_PALETTE_LIGHT[idx]:EVO_PALETTE[idx];}\n" +
+
+        // ── State computation: top-10 positions at a game ─────────────────────
+        "function evoComputeState(gi){\n" +
+        "const top10=evoRankings[gi].slice(0,10);\n" +
+        "const s={};top10.forEach((e,i)=>s[e.name]={rank:i,score:e.score,opacity:1.0});\n" +
+        "return s;}\n" +
+
+        // ── Main redraw dispatcher ─────────────────────────────────────────────
+        "function evoRedraw(){\n" +
+        "evoDrawBarRace('top10Canvas',evoCurrentBarState);\n" +
+        "if(evoSelectedPlayer)evoDrawPlayerLines(evoCurrent,evoSelectedPlayer);}\n" +
+
+        // ── Bar-race canvas draw ───────────────────────────────────────────────
+        "function evoDrawBarRace(cid,state){\n" +
+        "const cv=document.getElementById(cid);if(!cv||!cv.parentElement)return;\n" +
+        "cv.width=cv.parentElement.clientWidth||800;\n" +
+        "const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;\n" +
+        "ctx.clearRect(0,0,W,H);\n" +
+        "const BAR_H=36,GAP=10,ML=200,MR=70,MT=10;\n" +
+        "const scores=Object.values(state).filter(p=>p.opacity>0.01).map(p=>p.score);\n" +
+        "if(!scores.length)return;\n" +
+        "const maxS=Math.max(...scores)*1.06;\n" +
+        "const barAreaW=W-ML-MR;\n" +
+        "Object.entries(state).forEach(([name,pos])=>{\n" +
+        "  if(pos.opacity<0.01)return;\n" +
+        "  const y=MT+pos.rank*(BAR_H+GAP);\n" +
+        "  const bw=Math.max((pos.score/maxS)*barAreaW,0);\n" +
+        "  const color=evoColorOf(name,false);\n" +
+        "  const colorL=evoColorOf(name,true);\n" +
+        "  ctx.globalAlpha=pos.opacity;\n" +
+        "  ctx.fillStyle=colorL;\n" +
+        "  if(cv.getContext('2d').roundRect)ctx.beginPath(),ctx.roundRect(ML,y,barAreaW,BAR_H,4),ctx.fill();\n" +
+        "  else{ctx.fillRect(ML,y,barAreaW,BAR_H);}\n" +
+        "  ctx.fillStyle=color;\n" +
+        "  if(bw>0){if(cv.getContext('2d').roundRect)ctx.beginPath(),ctx.roundRect(ML,y,bw,BAR_H,4),ctx.fill();\n" +
+        "  else ctx.fillRect(ML,y,bw,BAR_H);}\n" +
+        "  ctx.fillStyle='rgba(0,0,0,0.22)';\n" +
+        "  ctx.fillRect(ML,y,34,BAR_H);\n" +
+        "  ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';\n" +
+        "  ctx.fillText('#'+(Math.round(pos.rank)+1),ML+17,y+BAR_H/2+4.5);\n" +
+        "  ctx.fillStyle='#1a1a2e';ctx.font='600 13px sans-serif';ctx.textAlign='right';\n" +
+        "  ctx.fillText(name,ML-10,y+BAR_H/2+4.5);\n" +
+        "  ctx.fillStyle=color;ctx.font='bold 13px sans-serif';ctx.textAlign='left';\n" +
+        "  ctx.fillText(pos.score.toFixed(1),ML+bw+8,y+BAR_H/2+4.5);\n" +
+        "  ctx.globalAlpha=1.0;});\n" +
+        "const g=EVO.games[evoCurrent];\n" +
+        "ctx.fillStyle='rgba(30,68,112,0.10)';ctx.font='bold 38px sans-serif';ctx.textAlign='right';\n" +
+        "ctx.fillText(g.date,W-MR,H-12);}\n" +
+
+        // ── Interpolate between two bar states ────────────────────────────────
+        "function evoInterp(from,to,t){\n" +
+        "const e=t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;\n" +
+        "const all=new Set([...Object.keys(from),...Object.keys(to)]);\n" +
+        "const result={};\n" +
+        "all.forEach(name=>{\n" +
+        "  const f=from[name]||{rank:10,score:(to[name]?.score||50),opacity:0};\n" +
+        "  const tt=to[name]||{rank:11,score:f.score,opacity:0};\n" +
+        "  result[name]={rank:f.rank+(tt.rank-f.rank)*e,score:f.score+(tt.score-f.score)*e,opacity:f.opacity+(tt.opacity-f.opacity)*e};});\n" +
+        "return result;}\n" +
+
+        // ── Animated transition to a game state ───────────────────────────────
+        "function evoTransitionTo(gi){\n" +
+        "if(evoAnimFrame)cancelAnimationFrame(evoAnimFrame);\n" +
+        "evoAnimFrom=Object.assign({},evoCurrentBarState);\n" +
+        "evoAnimTo=evoComputeState(gi);\n" +
+        "evoAnimStart=null;\n" +
+        "evoAnimFrame=requestAnimationFrame(evoAnimTick);}\n" +
+
+        "function evoAnimTick(ts){\n" +
+        "if(!evoAnimStart)evoAnimStart=ts;\n" +
+        "const t=Math.min((ts-evoAnimStart)/EVO_TRANS_MS,1);\n" +
+        "evoCurrentBarState=evoInterp(evoAnimFrom,evoAnimTo,t);\n" +
+        "evoDrawBarRace('top10Canvas',evoCurrentBarState);\n" +
+        "if(evoSelectedPlayer)evoDrawPlayerLines(evoCurrent,evoSelectedPlayer);\n" +
+        "if(t<1){evoAnimFrame=requestAnimationFrame(evoAnimTick);return;}\n" +
+        "evoCurrentBarState=evoAnimTo;\n" +
+        "if(evoPlaying){\n" +
+        "  if(evoCurrent<EVO.games.length-1){evoCurrent++;evoUpdateLabel();evoTransitionTo(evoCurrent);}\n" +
+        "  else evoPause();}}\n" +
+
+        // ── Play / Pause / Slider ─────────────────────────────────────────────
+        "function toggleEvoPlay(){if(evoPlaying)evoPause();else evoPlay();}\n" +
+        "function evoPlay(){\n" +
+        "if(evoCurrent>=EVO.games.length-1)evoCurrent=0;\n" +
+        "evoPlaying=true;document.getElementById('evoPlayBtn').textContent='⏸ Pause';\n" +
+        "evoTransitionTo(evoCurrent);}\n" +
+        "function evoPause(){\n" +
+        "evoPlaying=false;document.getElementById('evoPlayBtn').textContent='▶ Play';\n" +
+        "if(evoAnimFrame)cancelAnimationFrame(evoAnimFrame);}\n" +
+        "function onEvoSlider(v){\n" +
+        "if(evoPlaying)evoPause();\n" +
+        "evoCurrent=parseInt(v);evoUpdateLabel();\n" +
+        "evoCurrentBarState=evoComputeState(evoCurrent);evoRedraw();}\n" +
+        "function evoUpdateLabel(){\n" +
+        "const g=EVO.games[evoCurrent];\n" +
+        "document.getElementById('evoLabel').textContent='Game #'+g.id+' \u2014 '+g.date;\n" +
+        "document.getElementById('evoSlider').value=evoCurrent;}\n" +
+        "function setEvoSpeed(ms,btn){\n" +
+        "evoSpeed=ms;\n" +
+        "document.querySelectorAll('.evo-speed-btn').forEach(b=>b.classList.remove('active'));\n" +
+        "btn.classList.add('active');}\n" +
+
+        // ── Individual player line charts ─────────────────────────────────────
+        "function onEvoPlayer(){\n" +
+        "evoSelectedPlayer=document.getElementById('evoPlayerSelect').value;\n" +
+        "document.getElementById('playerChartsSection').style.display=evoSelectedPlayer?'':'none';\n" +
+        "if(evoSelectedPlayer)evoDrawPlayerLines(evoCurrent,evoSelectedPlayer);}\n" +
+
+        "function evoDrawPlayerLines(gi,name){\n" +
+        "evoDrawPlayerLine('playerScoreCanvas',gi,name,false);\n" +
+        "evoDrawPlayerLine('playerRankCanvas',gi,name,true);}\n" +
+
+        "function evoDrawPlayerLine(cid,gi,name,rankMode){\n" +
+        "const cv=document.getElementById(cid);if(!cv||!cv.parentElement)return;\n" +
+        "cv.width=cv.parentElement.clientWidth||800;\n" +
+        "const ctx=cv.getContext('2d'),W=cv.width,H=cv.height;\n" +
+        "ctx.clearRect(0,0,W,H);\n" +
+        "const ML=52,MR=20,MT=20,MB=38,cw=W-ML-MR,ch=H-MT-MB,N=EVO.games.length;\n" +
+        "const vals=[];for(let i=0;i<N;i++){const s=EVO.scores[name]?.[i];\n" +
+        "  if(s!=null)vals.push(rankMode?(evoRankings[i].findIndex(e=>e.name===name)+1||null):s);else vals.push(null);}\n" +
+        "const nonNull=vals.filter(v=>v!=null);if(!nonNull.length)return;\n" +
+        "let yMin,yMax;\n" +
+        "if(rankMode){yMax=Math.max(...nonNull)+1;yMin=0;}\n" +
+        "else{const lo=Math.min(...nonNull),hi=Math.max(...nonNull),p=Math.max((hi-lo)*.1,1);yMin=lo-p;yMax=hi+p;}\n" +
+        "const xOf=i=>ML+(i/Math.max(N-1,1))*cw;\n" +
+        "const yOf=rankMode?r=>MT+((r-1)/Math.max(yMax-1,1))*ch:v=>MT+ch-((v-yMin)/Math.max(yMax-yMin,1))*ch;\n" +
+        "const gs=5;ctx.strokeStyle='#e8ecf0';ctx.lineWidth=1;\n" +
+        "for(let s=0;s<=gs;s++){const v=yMin+(s/gs)*(yMax-yMin),y=yOf(v);\n" +
+        "  ctx.beginPath();ctx.moveTo(ML,y);ctx.lineTo(W-MR,y);ctx.stroke();\n" +
+        "  ctx.fillStyle='#aaa';ctx.font='10px sans-serif';ctx.textAlign='right';\n" +
+        "  ctx.fillText(rankMode?'#'+Math.round(v):v.toFixed(1),ML-4,y+3);}\n" +
+        "const ls=Math.ceil(N/10);ctx.fillStyle='#ccc';ctx.font='10px sans-serif';ctx.textAlign='center';\n" +
+        "for(let i=0;i<N;i+=ls)ctx.fillText(EVO.games[i].date.slice(5),xOf(i),MT+ch+20);\n" +
+        "const color=evoColorOf(name,false);\n" +
+        "ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.beginPath();\n" +
+        "let started=false;\n" +
+        "for(let i=0;i<=gi;i++){const v=vals[i];if(v==null){started=false;continue;}\n" +
+        "  const x=xOf(i),y=yOf(v);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}\n" +
+        "ctx.stroke();\n" +
+        "for(let i=gi;i>=0;i--){if(vals[i]==null)continue;\n" +
+        "  ctx.fillStyle=color;ctx.beginPath();ctx.arc(xOf(i),yOf(vals[i]),5,0,Math.PI*2);ctx.fill();break;}}\n" +
+
+        // ── Player hover on line charts ───────────────────────────────────────
+        "function evoSetupPlayerHover(){\n" +
+        "['playerScoreCanvas','playerRankCanvas'].forEach(cid=>{\n" +
+        "  const cv=document.getElementById(cid);if(!cv)return;\n" +
+        "  cv.addEventListener('mousemove',e=>{\n" +
+        "    if(!evoSelectedPlayer)return;\n" +
+        "    const rect=cv.getBoundingClientRect(),x=e.clientX-rect.left;\n" +
+        "    const N=EVO.games.length,cw=cv.width-72;\n" +
+        "    const idx=Math.max(0,Math.min(Math.round(((x-52)/cw)*(N-1)),evoCurrent));\n" +
+        "    const g=EVO.games[idx];const s=EVO.scores[evoSelectedPlayer]?.[idx];\n" +
+        "    if(s==null)return;\n" +
+        "    const r=evoRankings[idx].findIndex(en=>en.name===evoSelectedPlayer)+1;\n" +
+        "    const tip=document.getElementById('playerTooltip');\n" +
+        "    tip.innerHTML='<b>Game #'+g.id+' \u2014 '+g.date+'</b><br>Score: '+s.toFixed(1)+'<br>Rank: #'+r;\n" +
+        "    tip.style.display='block';tip.style.left=(e.pageX+14)+'px';tip.style.top=(e.pageY-10)+'px';});\n" +
+        "  cv.addEventListener('mouseleave',()=>{\n" +
+        "    document.getElementById('playerTooltip').style.display='none';});});}\n";
     }
 
     // -------------------------------------------------------------------------
@@ -475,6 +769,35 @@ public class HtmlWriter {
             ".win-icon{font-size:1em;margin-right:2px}" +
             "@media(max-width:600px){.podium{flex-direction:column;align-items:center}.podium-card{order:unset!important}" +
             ".game-meta{flex-direction:column;gap:4px;align-items:flex-start}}" +
+            // Evolution tab
+            ".evo-controls{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-bottom:18px;" +
+            "background:var(--card);border-radius:var(--radius);padding:14px 18px;box-shadow:var(--shadow)}" +
+            ".evo-mode-group,.evo-speed-group{display:flex;align-items:center;gap:6px}" +
+            ".evo-mode-btn,.evo-speed-btn{padding:5px 14px;border:1.5px solid var(--blue);border-radius:20px;" +
+            "background:#fff;color:var(--blue);cursor:pointer;font-size:.85em;font-weight:600;transition:all .15s}" +
+            ".evo-mode-btn.active,.evo-speed-btn.active{background:var(--blue);color:#fff}" +
+            ".evo-playback{display:flex;align-items:center;gap:10px;flex:1;min-width:260px}" +
+            ".evo-play-btn{padding:6px 18px;background:var(--navy);color:#fff;border:none;border-radius:20px;" +
+            "cursor:pointer;font-size:.9em;font-weight:700;white-space:nowrap;transition:background .15s}" +
+            ".evo-play-btn:hover{background:var(--blue)}" +
+            ".evo-slider{flex:1;accent-color:var(--blue)}" +
+            ".evo-label{font-size:.85em;font-weight:600;color:var(--navy);white-space:nowrap;min-width:180px}" +
+            ".evo-speed-group span{font-size:.85em;color:var(--muted);font-weight:600}" +
+            ".evo-chart-wrap{position:relative;width:100%;background:var(--card);border-radius:var(--radius);" +
+            "box-shadow:var(--shadow);padding:8px;overflow:hidden}" +
+            ".evo-canvas{display:block;width:100%}" +
+            ".evo-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}" +
+            ".evo-leg-item{display:flex;align-items:center;gap:5px;background:var(--card);border-radius:12px;" +
+            "padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,.08);font-size:.82em}" +
+            ".evo-leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}" +
+            ".evo-leg-rank{font-weight:800;color:var(--muted);min-width:24px}" +
+            ".evo-leg-name{font-weight:600;color:var(--text)}" +
+            ".evo-leg-score{font-weight:700;color:var(--blue);margin-left:4px}" +
+            ".evo-tooltip{display:none;position:fixed;background:rgba(20,30,50,.92);color:#fff;border-radius:8px;" +
+            "padding:10px 14px;font-size:.83em;line-height:1.7;pointer-events:none;z-index:999;" +
+            "box-shadow:0 4px 16px rgba(0,0,0,.25);max-width:280px}" +
+            ".evo-chart-label{font-size:.85em;font-weight:700;color:var(--muted);text-transform:uppercase;" +
+            "letter-spacing:.07em;margin-bottom:8px}" +
             "</style>\n";
     }
 
@@ -483,7 +806,8 @@ public class HtmlWriter {
     // -------------------------------------------------------------------------
 
     private String js(List<PlayerStats> players, int maxTier,
-                      List<Game> allGames, Map<Game, List<Result>> resultsByGame) {
+                      List<Game> allGames, Map<Game, List<Result>> resultsByGame,
+                      Map<Long, Map<String, Double>> computedScores) {
         StringBuilder data = new StringBuilder("const PLAYERS={\n");
         for (PlayerStats ps : players) {
             String key = ps.player.getName().replace("\\", "\\\\").replace("'", "\\'");
@@ -509,12 +833,13 @@ public class HtmlWriter {
         }
         data.append("};\nconst MAX_TIER=").append(maxTier).append(";\n");
 
-        return "<script>\n" + data +
+        return "<script>\n" + data + buildEvoJson(allGames, computedScores) +
             "function showTab(name,btn){" +
             "document.querySelectorAll('.tab-content').forEach(e=>e.style.display='none');" +
             "document.getElementById('tab-'+name).style.display='';" +
             "document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));" +
-            "btn.classList.add('active');}\n" +
+            "btn.classList.add('active');" +
+            "if(name==='evolution')evoInit();}\n" +
 
             "function filterTable(id,q){" +
             "q=q.toLowerCase();" +
@@ -573,6 +898,7 @@ public class HtmlWriter {
             "return asc?bv-av:av-bv;}" +
             "return asc?bv.localeCompare(av):av.localeCompare(bv);});" +
             "rows.forEach(r=>tbl.querySelector('tbody').appendChild(r));}\n" +
+            evoJs() +
             "</script>\n";
     }
 

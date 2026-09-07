@@ -1,0 +1,41 @@
+name: Update KOB Rankings
+
+on:
+  schedule:
+    # Twice daily: 8am and 10pm MST (UTC-6 in winter, UTC-7 in summer)
+    - cron: '0 14 * * *'
+    - cron: '0 4 * * *'
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Inject Google credentials
+        run: echo "${{ secrets.CREDENTIALS_JSON }}" | base64 -d > src/main/resources/credentials.json
+
+      - name: Build
+        run: mvn package -q
+
+      - name: Run
+        run: java -jar target/kob-1.0-SNAPSHOT.jar
+
+      - name: Deploy dashboard to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: .
+          include_files: dashboard.html
+          commit_message: 'Update rankings'

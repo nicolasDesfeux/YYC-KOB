@@ -122,6 +122,48 @@ public class GSheetConnector {
         }
     }
 
+    /** Appends a single row after the last row with data in the given sheet. */
+    public void appendRow(String sheetName, List<Object> row) {
+        try {
+            String range = "'" + sheetName + "'!A1";
+            ValueRange body = new ValueRange().setValues(Collections.singletonList(row));
+            getSheetsService().spreadsheets().values()
+                    .append(spreadsheetId, range, body)
+                    .setValueInputOption("USER_ENTERED")
+                    .setInsertDataOption("INSERT_ROWS")
+                    .execute();
+        } catch (IOException e) {
+            log.error("Error appending row to sheet '{}'", sheetName, e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Overwrites the header row (row 1) of the given sheet without touching data rows. */
+    public void writeHeader(String sheetName, List<Object> header) {
+        try {
+            String range = "'" + sheetName + "'!A1";
+            ValueRange body = new ValueRange().setValues(Collections.singletonList(header));
+            getSheetsService().spreadsheets().values()
+                    .update(spreadsheetId, range, body)
+                    .setValueInputOption("RAW").execute();
+        } catch (IOException e) {
+            log.error("Error writing header to sheet '{}'", sheetName, e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** Clears all data rows (keeps row 1 header) in the given sheet. */
+    public void clearSheetData(String sheetName) {
+        try {
+            String range = "'" + sheetName + "'!A2:ZZ10000";
+            getSheetsService().spreadsheets().values()
+                    .clear(spreadsheetId, range, new ClearValuesRequest()).execute();
+        } catch (IOException e) {
+            log.error("Error clearing data in sheet '{}'", sheetName, e);
+            throw new RuntimeException(e);
+        }
+    }
+
     public List<List<Object>> getResults() {
         if (data == null) {
             try {
