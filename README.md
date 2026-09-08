@@ -253,28 +253,33 @@ retained so `--compare` can validate the engine against it.
 
 ## Adding new games
 
-Paste results into the **`Game Input`** sheet and run the app. No flag needed —
-the import runs automatically before every ranking computation.
+Paste results into the **`Game Input`** sheet. The import runs automatically
+before every ranking computation, including scheduled ones — no flag needed.
 
-Layout — one column per game, headers containing the game ID:
+Row 1 is the header, **row 2 is the date**, and players follow from row 3:
 
-| Players        | G451 | G452 |
-| -------------- | ---- | ---- |
-| Chris Mitchell | 1.5  | 4    |
-| Brandon Burnside | 1.5 | 2   |
-| Mark Patton    | 20   | 18   |
+| Players          | G451       | G452       |
+| ---------------- | ---------- | ---------- |
+| Date             | 2026-09-02 | 2026-09-05 |
+| Chris Mitchell   | 1.5        | 4          |
+| Brandon Burnside | 1.5        | 2          |
+| Mark Patton      | 20         | 18         |
+
+**The date row does double duty.** It supplies the date the game was played, and
+it acts as a ready marker: a game column with no valid date is left in the sheet
+rather than imported. That means you can stage a game while you are still
+entering it without a scheduled run picking it up half-finished.
 
 The importer will:
 
 1. Parse each game ID from its column header (any header matching `G<number>`).
-2. Append one correctly-ordered row per game to `Game Results`.
-3. **Register unknown players automatically** as new columns in the
+2. Skip any column whose date is missing or unparseable, leaving it staged.
+3. Append one correctly-ordered row per game to `Game Results`, dated.
+4. **Register unknown players automatically** as new columns in the
    `Game Results` header.
-4. **Skip any game ID already present**, so a re-run cannot double-count.
-5. Clear the staging sheet.
-
-The **date column is left blank** — fill it in on `Game Results` afterwards.
-Games without a valid date will not load on the next run.
+5. **Skip any game ID already present**, so a re-run cannot double-count.
+6. Clear the staging sheet **only when nothing was left behind** — if any game
+   was undated or a duplicate, the sheet is kept so no input is destroyed.
 
 ---
 
@@ -360,6 +365,10 @@ Generated as a single self-contained `dashboard.html`:
 `dashboard.html` to GitHub Pages — twice daily, and on demand from the Actions
 tab.
 
+The workflow fails deliberately if the run does not produce a plausible
+`dashboard.html`, so a broken run shows up as a red mark rather than silently
+redeploying the previous day's standings.
+
 Required one-time setup:
 
 1. **Repository secret** `CREDENTIALS_JSON` — the service account key,
@@ -374,8 +383,29 @@ Required one-time setup:
 2. **Enable Pages** under *Settings → Pages*, serving from the `gh-pages` branch
    at root.
 
-The dashboard then lives at
-`https://<user>.github.io/<repo>/dashboard.html` — a single link to share.
+The dashboard then lives at `https://<user>.github.io/<repo>/` — a single
+stable link. Because the URL never changes, it only has to be shared once; every
+later run refreshes what it points at.
+
+### Sharing it
+
+Set `site.base.url` in `config.properties` to that address. The page then carries
+OpenGraph tags, so pasting the link into Messenger renders a preview card naming
+the current leader and the update time instead of a bare URL. The summary is
+rebuilt on every run, so a re-shared link reflects the current standings.
+
+Two caveats worth knowing:
+
+- **Facebook caches link previews aggressively.** A re-pasted URL may show a
+  stale card for a while; their sharing debugger can force a rescrape.
+- **There is no supported way to post into a Messenger group automatically.**
+  Meta's Messenger Platform covers Pages messaging users, not personal group
+  threads, so the link still has to be pasted by a person. The stable URL is
+  what makes that a one-off rather than a chore.
+
+`site.preview.image` can point at an image for a richer card. Leave it unset
+unless the image really exists — a card referencing a missing file renders worse
+than one with no image at all.
 
 ---
 

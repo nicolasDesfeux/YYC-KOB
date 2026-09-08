@@ -52,6 +52,8 @@ public class GSheetConnector {
     private static final String APPLICATION_NAME = "kob-2023";
     private static final List<String> SCOPES = Collections.singletonList(SheetsScopes.SPREADSHEETS);
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
+    /** The sheet backing {@link #getResults()}; writes here invalidate its cache. */
+    private static final String RESULTS_SHEET = "Game Results";
 
     // Twemoji CDN — medal emoji PNGs (stable, versioned URL)
     private static final String IMG_GOLD   = "=IMAGE(\"https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f947.png\")";
@@ -132,6 +134,7 @@ public class GSheetConnector {
                     .setValueInputOption("USER_ENTERED")
                     .setInsertDataOption("INSERT_ROWS")
                     .execute();
+            if (RESULTS_SHEET.equals(sheetName)) invalidateResultsCache();
         } catch (IOException e) {
             log.error("Error appending row to sheet '{}'", sheetName, e);
             throw new RuntimeException(e);
@@ -146,6 +149,7 @@ public class GSheetConnector {
             getSheetsService().spreadsheets().values()
                     .update(spreadsheetId, range, body)
                     .setValueInputOption("RAW").execute();
+            if (RESULTS_SHEET.equals(sheetName)) invalidateResultsCache();
         } catch (IOException e) {
             log.error("Error writing header to sheet '{}'", sheetName, e);
             throw new RuntimeException(e);
@@ -164,11 +168,20 @@ public class GSheetConnector {
         }
     }
 
+    /**
+     * Drops the cached "Game Results" snapshot so the next read reflects writes
+     * made during this run. Without it a freshly imported game stays invisible
+     * until the following run.
+     */
+    public void invalidateResultsCache() {
+        data = null;
+    }
+
     public List<List<Object>> getResults() {
         if (data == null) {
             try {
                 Sheets service = getSheetsService();
-                final String range = "Game Results!A1:ZZ1000";
+                final String range = RESULTS_SHEET + "!A1:ZZ1000";
                 ValueRange response = service.spreadsheets().values()
                         .get(spreadsheetId, range)
                         .execute();

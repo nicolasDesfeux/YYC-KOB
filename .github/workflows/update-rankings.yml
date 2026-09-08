@@ -31,11 +31,30 @@ jobs:
       - name: Run
         run: java -jar target/kob-1.0-SNAPSHOT.jar
 
+      - name: Check the dashboard was produced
+        # A run that fails to write the dashboard must not quietly redeploy the
+        # previous one — fail here so the red mark in Actions is the signal.
+        run: |
+          test -f dashboard.html || { echo "::error::dashboard.html was not produced"; exit 1; }
+          size=$(wc -c < dashboard.html)
+          echo "dashboard.html is $size bytes"
+          if [ "$size" -lt 10000 ]; then
+            echo "::error::dashboard.html is only $size bytes — the run likely failed part-way"
+            exit 1
+          fi
+
+      - name: Stage the site
+        # Served at the bare URL so the link shared in Messenger stays short,
+        # with dashboard.html kept as a stable alias for any existing links.
+        run: |
+          mkdir -p _site
+          cp dashboard.html _site/index.html
+          cp dashboard.html _site/dashboard.html
+
       - name: Deploy dashboard to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: .
-          include_files: dashboard.html
+          publish_dir: ./_site
           commit_message: 'Update rankings'

@@ -58,11 +58,17 @@ are both `1.5`). The arithmetic handles this correctly and is covered by tests,
 but nothing validates that the fractions are consistent — e.g. that exactly two
 players share `1.5` and that nobody is left on a plain `2`.
 
-### Missing dates are silent — Open *(new)*
-The importer deliberately leaves the date column blank for manual entry, and
-`GameDaoGSheet` skips any row whose date will not parse. A game imported but not
-yet dated therefore vanishes with no clear signal that it is waiting on input.
-A warning naming the undated game IDs would make this obvious.
+### Missing dates are silent — Done
+Worse than filed, as it turned out. The date parse in `GameDaoGSheet` was
+unguarded, so a blank date threw rather than skipping; combined with the importer
+clearing the staging sheet, an unattended run would import an undated game, wipe
+its source, and then crash on every subsequent run until a human intervened.
+
+The date now comes from a required date row in `Game Input`, which also gates the
+import — an undated column is left staged rather than imported. The parse is
+guarded, the staging sheet is only cleared when nothing was left behind, and the
+results cache is invalidated after a write so an imported game is visible in the
+same run.
 
 ---
 
@@ -100,6 +106,24 @@ anyone whose oldest counted result has expired since the previous run.
 target alongside the sheet writers. `GSheetConnector` still mixes sheet I/O with
 presentation concerns (banding, podium colours, autofilter), so adding another
 target still means going through it.
+
+---
+
+## Publishing
+
+### Preview image for shared links — Open
+`site.preview.image` is wired through but unset, so the link preview renders as a
+small text card. Generating a `preview.png` per run — top three and the update
+date — would give a large-image card, which reads better in a Messenger thread.
+Java2D in headless CI is the obvious approach; the workflow would need to publish
+the image alongside the page.
+
+### Nobody watches the Actions tab — Partial
+The workflow now fails loudly when a run does not produce a plausible dashboard,
+so failures are at least recorded rather than silently redeploying stale
+standings. What is missing is anything that actively *tells* you: a scheduled run
+can stay broken until someone happens to look. Email on failure is a GitHub
+account setting; anything richer needs a webhook.
 
 ---
 

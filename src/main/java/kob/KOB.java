@@ -46,6 +46,10 @@ public class KOB {
     private final GameInputDao gameInputDao;
     private String debugPlayer;   // optional: dump bucket breakdown for one player
     private String htmlOutputPath;
+    /** Where the dashboard is published, used for link-preview tags. */
+    private String siteBaseUrl;
+    /** Optional absolute URL of a link-preview image. */
+    private String previewImage;
     public final static DecimalFormat DF = new DecimalFormat("0.0");
     
     private static volatile KOB singleInstance = null;
@@ -69,6 +73,8 @@ public class KOB {
 
             daoType = properties.getProperty("dao.type");
             htmlOutputPath = properties.getProperty("html.output.path", "dashboard.html");
+            siteBaseUrl    = properties.getProperty("site.base.url");
+            previewImage   = properties.getProperty("site.preview.image");
             config = KobConfig.fromProperties(properties);
             log.info("Scoring configuration: {}", config);
 
@@ -199,7 +205,7 @@ public class KOB {
         rankingWriter.writeStatistics(stats.global, stats.players);
 
         try {
-            new dao.HtmlWriter().write(htmlOutputPath, ranking, stats.global, stats.players, allGames, resultsByGame, computedScores);
+            new dao.HtmlWriter(siteBaseUrl, previewImage).write(htmlOutputPath, ranking, stats.global, stats.players, allGames, resultsByGame, computedScores);
             log.info("HTML dashboard written to {}", htmlOutputPath);
         } catch (IOException e) {
             log.error("Failed to write HTML dashboard", e);

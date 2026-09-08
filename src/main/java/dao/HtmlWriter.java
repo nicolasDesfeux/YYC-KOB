@@ -28,6 +28,25 @@ import java.util.stream.Collectors;
  */
 public class HtmlWriter {
 
+    /** Absolute base URL the dashboard is published at, or null if unknown. */
+    private final String siteBaseUrl;
+    /** Absolute URL of a preview image, or null if none has been provided. */
+    private final String previewImageUrl;
+
+    public HtmlWriter() { this(null, null); }
+
+    public HtmlWriter(String siteBaseUrl) { this(siteBaseUrl, null); }
+
+    public HtmlWriter(String siteBaseUrl, String previewImageUrl) {
+        this.siteBaseUrl = blankToNull(siteBaseUrl) == null
+                ? null : siteBaseUrl.replaceAll("/+$", "");
+        this.previewImageUrl = blankToNull(previewImageUrl);
+    }
+
+    private static String blankToNull(String v) {
+        return v == null || v.isBlank() ? null : v;
+    }
+
     public void write(String outputPath, List<Player> ranking,
                       GlobalStats global, List<PlayerStats> playerStats,
                       List<Game> allGames, Map<Game, List<Result>> resultsByGame,
@@ -48,6 +67,7 @@ public class HtmlWriter {
         sb.append("<meta charset=\"UTF-8\">\n");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
         sb.append("<title>KOB Dashboard</title>\n");
+        sb.append(socialTags(ranking, ts));
         sb.append(css());
         sb.append("</head><body>\n");
 
@@ -73,6 +93,50 @@ public class HtmlWriter {
 
         sb.append(js(playerStats, global.maxTier, allGames, resultsByGame, computedScores));
         sb.append("</body></html>");
+        return sb.toString();
+    }
+
+    /**
+     * OpenGraph and Twitter card tags.
+     *
+     * The dashboard gets shared by pasting its URL into a Messenger group, so the
+     * preview card is the first thing most people see. Regenerating the summary
+     * on every run means a re-shared link reflects the current standings rather
+     * than whatever was true the first time it was scraped.
+     */
+    private String socialTags(List<Player> ranking, String updated) {
+        String summary;
+        if (ranking.isEmpty()) {
+            summary = "Rankings for King of the Beach Calgary. Updated " + updated + ".";
+        } else {
+            Player leader = ranking.get(0);
+            summary = String.format("%s leads on %.1f \u00b7 %d players ranked \u00b7 updated %s",
+                    leader.getName(),
+                    leader.getMasterScore().setScale(1, RoundingMode.HALF_UP).doubleValue(),
+                    ranking.size(), updated);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<meta name=\"description\" content=\"").append(esc(summary)).append("\">\n");
+        sb.append("<meta property=\"og:title\" content=\"KOB Calgary \u2014 Rankings\">\n");
+        sb.append("<meta property=\"og:description\" content=\"").append(esc(summary)).append("\">\n");
+        sb.append("<meta property=\"og:type\" content=\"website\">\n");
+        sb.append("<meta property=\"og:site_name\" content=\"King of the Beach Calgary\">\n");
+        // Scrapers only follow absolute URLs, so these are emitted only when the
+        // published location is known.
+        if (siteBaseUrl != null) {
+            sb.append("<meta property=\"og:url\" content=\"").append(esc(siteBaseUrl)).append("/\">\n");
+        }
+        // Only advertise an image that actually exists — a card pointing at a
+        // missing file renders worse than one with no image at all.
+        if (previewImageUrl != null) {
+            sb.append("<meta property=\"og:image\" content=\"").append(esc(previewImageUrl)).append("\">\n");
+            sb.append("<meta name=\"twitter:card\" content=\"summary_large_image\">\n");
+        } else {
+            sb.append("<meta name=\"twitter:card\" content=\"summary\">\n");
+        }
+        sb.append("<meta name=\"twitter:title\" content=\"KOB Calgary \u2014 Rankings\">\n");
+        sb.append("<meta name=\"twitter:description\" content=\"").append(esc(summary)).append("\">\n");
         return sb.toString();
     }
 

@@ -4,6 +4,9 @@ import dao.daoInterface.GameInputDao;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -19,11 +22,15 @@ import java.util.regex.Pattern;
  * Reads player finish positions from the "Game Input" staging sheet and appends
  * one correctly-ordered row per game to the "Game Results" sheet.
  *
- * Expected "Game Input" sheet layout (row 1 = header):
- *   A: Players
- *   B+: One column per game, header is the game ID (e.g. "G451", "G452")
+ * Expected "Game Input" sheet layout:
+ *   Row 1: A = "Players", B+ = one column per game, headed with its ID ("G451")
+ *   Row 2: A = "Date",    B+ = that game's date, ISO format (2026-09-02)
+ *   Row 3+: A = player name, B+ = that player's finish position
  *
- * Dates are left blank — fill them manually in "Game Results".
+ * The date row is required and doubles as a ready marker: a game column with no
+ * valid date is left in place rather than imported, so a game can be staged
+ * while it is still being entered without a scheduled run picking it up early.
+ *
  * New players are automatically added as new columns to the "Game Results" header.
  */
 public class GSheetGameInputDao implements GameInputDao {
@@ -33,10 +40,37 @@ public class GSheetGameInputDao implements GameInputDao {
     private static final String RESULT_SHEET = "Game Results";
     private static final Pattern GAME_ID_PATTERN = Pattern.compile("G(\\d+)", Pattern.CASE_INSENSITIVE);
 
+    /** Row 1 is the header, row 2 the dates, so player rows start here. */
+    private static final int FIRST_PLAYER_ROW = 2;
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    /** Where a game's finishes live in the staging sheet, and when it was played. */
+    private record GameColumn(int column, LocalDate date) {}
+
     private final GSheetConnector connector;
 
     public GSheetGameInputDao(GSheetConnector connector) {
         this.connector = connector;
+    }
+
+    /** True when row 2 looks like the date row (column A labelled "date"). */
+    static boolean isDateRow(List<Object> row) {
+        if (row == null || row.isEmpty() || row.get(0) == null) return false;
+        String label = row.get(0).toString().trim().toLowerCase(java.util.Locale.ROOT)
+                .replace("(", "").replace(")", "").replace(":", "").trim();
+        return label.equals("date") || label.equals("dates");
+    }
+
+    /** Parses a cell as an ISO date, returning null for anything unusable. */
+    static LocalDate parseDate(Object cell) {
+        if (cell == null) return null;
+        String raw = cell.toString().trim();
+        if (raw.isEmpty()) return null;
+        try {
+            return LocalDate.parse(raw, DATE_FORMAT);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     @Override
@@ -75,28 +109,46 @@ public class GSheetGameInputDao implements GameInputDao {
             return;
         }
 
-        // ── 3. Parse header: find game columns (must contain G{id}) ───────────
+        // ── 3. Parse header and the date row ─────────────────────────────────
         List<Object> inputHeader = input.get(0);
-        // ordered map: gameId → input column index
-        Map<Long, Integer> gameColumns = new LinkedHashMap<>();
+        List<Object> dateRow = input.get(1);
+        if (!isDateRow(dateRow)) {
+            log.error("'{}' row 2 must be the date row: column A labelled 'Date', "
+                    + "each game column holding that game's date as yyyy-MM-dd. "
+                    + "Nothing imported.", INPUT_SHEET);
+            return;
+        }
+        if (input.size() < 3) {
+            log.error("'{}' has a header and date row but no player rows", INPUT_SHEET);
+            return;
+        }
+
+        // gameId → where to read it and when it was played
+        Map<Long, GameColumn> gameColumns = new LinkedHashMap<>();
+        int undated = 0;
         for (int j = 1; j < inputHeader.size(); j++) {
             if (inputHeader.get(j) == null) continue;
-            String colHeader = inputHeader.get(j).toString();
-            Matcher m = GAME_ID_PATTERN.matcher(colHeader);
-            if (m.find()) {
-                long gameId = Long.parseLong(m.group(1));
-                gameColumns.put(gameId, j);
-                log.debug("Found game column: '{}' → game ID {}", colHeader, gameId);
+            Matcher m = GAME_ID_PATTERN.matcher(inputHeader.get(j).toString());
+            if (!m.find()) continue;
+            long gameId = Long.parseLong(m.group(1));
+
+            LocalDate date = parseDate(j < dateRow.size() ? dateRow.get(j) : null);
+            if (date == null) {
+                log.warn("Game {} has no valid date in '{}' — leaving it staged", gameId, INPUT_SHEET);
+                undated++;
+                continue;
             }
+            gameColumns.put(gameId, new GameColumn(j, date));
+            log.info("Staged game {} played {}", gameId, date);
         }
         if (gameColumns.isEmpty()) {
-            log.error("No game columns found in '{}' header (expected 'G<id>' in column names)", INPUT_SHEET);
+            log.info("No dated game columns in '{}' — nothing to import", INPUT_SHEET);
             return;
         }
 
         // ── 4. Register new players — extend Game Results header if needed ────
         List<String> newPlayers = new ArrayList<>();
-        for (int i = 1; i < input.size(); i++) {
+        for (int i = FIRST_PLAYER_ROW; i < input.size(); i++) {
             List<Object> row = input.get(i);
             if (row.isEmpty() || row.get(0) == null) continue;
             String name = row.get(0).toString().trim();
@@ -118,21 +170,23 @@ public class GSheetGameInputDao implements GameInputDao {
         }
 
         // ── 5. For each game, build and append a row ──────────────────────────
-        for (Map.Entry<Long, Integer> entry : gameColumns.entrySet()) {
+        int imported = 0, skipped = 0;
+        for (Map.Entry<Long, GameColumn> entry : gameColumns.entrySet()) {
             long gameId   = entry.getKey();
-            int  inputCol = entry.getValue();
+            int  inputCol = entry.getValue().column();
 
             if (existingGameIds.contains(gameId)) {
                 log.warn("Game {} already exists in '{}' — skipping", gameId, RESULT_SHEET);
+                skipped++;
                 continue;
             }
 
             List<Object> newRow = new ArrayList<>(Collections.nCopies(resultHeader.size(), ""));
             newRow.set(0, gameId);
-            newRow.set(1, "");   // date left blank — fill manually
+            newRow.set(1, entry.getValue().date().format(DATE_FORMAT));
 
             int matched = 0, unmatched = 0;
-            for (int i = 1; i < input.size(); i++) {
+            for (int i = FIRST_PLAYER_ROW; i < input.size(); i++) {
                 List<Object> row = input.get(i);
                 if (row.isEmpty()) continue;
                 String playerName = row.get(0) == null ? "" : row.get(0).toString().trim();
@@ -156,11 +210,19 @@ public class GSheetGameInputDao implements GameInputDao {
             log.info("Game {}: matched {} players, {} unmatched", gameId, matched, unmatched);
 
             connector.appendRow(RESULT_SHEET, newRow);
-            log.info("Appended game {} to '{}'", gameId, RESULT_SHEET);
+            imported++;
+            log.info("Appended game {} ({}) to '{}'", gameId, entry.getValue().date(), RESULT_SHEET);
         }
 
-        // ── 6. Clear staging sheet (keep header row) ─────────────────────────
-        connector.clearSheetData(INPUT_SHEET);
-        log.info("'{}' staging sheet cleared", INPUT_SHEET);
+        // ── 6. Clear staging only when nothing was left behind ───────────────
+        // Undated or duplicate games are still sitting in the sheet; wiping it
+        // would destroy input that was never imported.
+        if (imported > 0 && skipped == 0 && undated == 0) {
+            connector.clearSheetData(INPUT_SHEET);
+            log.info("Imported {} game(s); '{}' staging sheet cleared", imported, INPUT_SHEET);
+        } else {
+            log.info("Imported {} game(s); leaving '{}' in place ({} undated, {} duplicate)",
+                    imported, INPUT_SHEET, undated, skipped);
+        }
     }
 }
