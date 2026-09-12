@@ -23,7 +23,52 @@ jobs:
           cache: maven
 
       - name: Inject Google credentials
-        run: echo "${{ secrets.CREDENTIALS_JSON }}" | base64 -d > src/main/resources/credentials.json
+        # Passed via env rather than inline ${{ }} so the value is never parsed
+        # by the shell. Every failure mode is checked explicitly: an empty or
+        # malformed secret used to write a 0-byte file and exit 0, leaving the
+        # run to fail much later with "no JSON input found".
+        env:
+          CREDENTIALS_JSON: ${{ secrets.CREDENTIALS_JSON }}
+        run: |
+          set -euo pipefail
+          DEST=src/main/resources/credentials.json
+
+          if [ -z "${CREDENTIALS_JSON:-}" ]; then
+            echo "::error::The CREDENTIALS_JSON secret is empty or not set."
+            echo "Add it under Settings -> Secrets and variables -> Actions."
+            echo "Generate the value with:  base64 -i src/main/resources/credentials.json"
+            exit 1
+          fi
+
+          if ! printf '%s' "$CREDENTIALS_JSON" | base64 -d > "$DEST" 2>/dev/null; then
+            echo "::error::CREDENTIALS_JSON is not valid base64."
+            echo "Regenerate it with:  base64 -i src/main/resources/credentials.json"
+            exit 1
+          fi
+
+          if [ ! -s "$DEST" ]; then
+            echo "::error::Decoded credentials are empty."
+            exit 1
+          fi
+
+          if ! jq -e . "$DEST" >/dev/null 2>&1; then
+            echo "::error::Decoded credentials are not valid JSON."
+            echo "The secret may have been copied with the file contents rather than its base64."
+            exit 1
+          fi
+
+          ACCT_TYPE=$(jq -r '.type // empty' "$DEST")
+          ACCT_MAIL=$(jq -r '.client_email // empty' "$DEST")
+          ACCT_KEY=$(jq -r '.private_key // empty' "$DEST")
+
+          if [ "$ACCT_TYPE" != "service_account" ] || [ -z "$ACCT_MAIL" ] || [ -z "$ACCT_KEY" ]; then
+            echo "::error::Not a usable service-account key (type='$ACCT_TYPE', client_email set: $([ -n "$ACCT_MAIL" ] && echo yes || echo no), private_key set: $([ -n "$ACCT_KEY" ] && echo yes || echo no))"
+            exit 1
+          fi
+
+          # Not a secret: this address is what the spreadsheet must be shared with.
+          echo "Service account OK: $ACCT_MAIL"
+          echo "If a later step fails with 403, share the spreadsheet with that address."
 
       - name: Build
         run: mvn package -q

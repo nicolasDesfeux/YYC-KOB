@@ -378,7 +378,14 @@ Required one-time setup:
    base64 -i src/main/resources/credentials.json | pbcopy
    ```
 
-   Add it under *Settings → Secrets and variables → Actions*.
+   Add it under *Settings → Secrets and variables → Actions*. Paste the
+   **base64 output**, not the file contents.
+
+   The workflow validates this before building and fails with a specific
+   message if the secret is missing, is not base64, does not decode to JSON,
+   or is not a service-account key. It also logs which service account it
+   resolved to, which is the address the spreadsheet has to be shared with —
+   useful if a later step returns 403.
 
 2. **Enable Pages** under *Settings → Pages*, serving from the `gh-pages` branch
    at root.
