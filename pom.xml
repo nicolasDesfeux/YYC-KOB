@@ -12,7 +12,7 @@
 		<java.version>21</java.version>
 		<!-- log4j-api and log4j-core must always match; a single property keeps
 		     an automated bump of one from silently breaking the other. -->
-		<log4j.version>2.25.4</log4j.version>
+		<log4j.version>2.25.5</log4j.version>
 		<maven.compiler.source>${java.version}</maven.compiler.source>
 		<maven.compiler.target>${java.version}</maven.compiler.target>
 	</properties>
